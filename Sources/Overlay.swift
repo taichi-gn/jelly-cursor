@@ -11,6 +11,8 @@ final class Overlay {
     }
 
     private var surfaces: [Surface] = []
+    // 画面が減ったときやオフの間に下げた窓。作り直すと外した窓が解放されずに溜まるので、使い回す
+    private var spares: [Surface] = []
     private var isActive = false
 
     // nil のときは何も描かない（本物のカーソルに任せている間や、文字を打っている間）
@@ -35,12 +37,15 @@ final class Overlay {
 
     func activate() {
         isActive = true
-        rebuildWindows()
+        layOutWindows()
     }
 
+    // 次にオンにしたとき前の絵が一瞬出ないよう、消してから下げる
     func deactivate() {
         isActive = false
+        figure = nil
         surfaces.forEach { $0.window.orderOut(nil) }
+        spares = surfaces + spares
         surfaces = []
     }
 
@@ -48,6 +53,7 @@ final class Overlay {
         let outline = figure as? CursorFigure
         let picture = figure as? ImageFigure
         let bounds = outline?.bounds ?? .null
+        let pictureBounds = picture?.bounds ?? .null
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for s in surfaces {
@@ -60,7 +66,7 @@ final class Overlay {
             s.border.shadowPath = path
             s.fill.path = path
 
-            if let picture, s.window.frame.contains(picture.position) {
+            if let picture, s.window.frame.intersects(pictureBounds) {
                 s.picture.contents = picture.image
                 s.picture.bounds = CGRect(origin: .zero, size: picture.size)
                 s.picture.anchorPoint = picture.anchor
@@ -77,7 +83,7 @@ final class Overlay {
     private func applyColors() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for s in surfaces {
+        for s in surfaces + spares {
             s.border.fillColor = colors.outline
             s.border.strokeColor = colors.outline
             s.fill.fillColor = colors.fill
@@ -86,18 +92,31 @@ final class Overlay {
     }
 
     @objc private func screensChanged() {
-        if isActive { rebuildWindows() }
+        if isActive { layOutWindows() }
     }
 
-    private func rebuildWindows() {
-        surfaces.forEach { $0.window.orderOut(nil) }
-        surfaces = NSScreen.screens.map(makeSurface)
+    private func layOutWindows() {
+        var pool = surfaces + spares
+        surfaces = NSScreen.screens.map { screen in
+            let s = pool.isEmpty ? makeSurface(for: screen) : pool.removeFirst()
+            fit(s, to: screen)
+            return s
+        }
+        pool.forEach { $0.window.orderOut(nil) }
+        spares = pool
         render()
+    }
+
+    private func fit(_ s: Surface, to screen: NSScreen) {
+        s.window.setFrame(screen.frame, display: false)
+        for layer in [s.border, s.fill, s.picture] {
+            layer.contentsScale = screen.backingScaleFactor
+        }
+        s.window.orderFrontRegardless()
     }
 
     private func makeSurface(for screen: NSScreen) -> Surface {
         let w = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
-        w.setFrame(screen.frame, display: false)
         w.isOpaque = false
         w.backgroundColor = .clear
         w.hasShadow = false
@@ -131,10 +150,8 @@ final class Overlay {
         picture.isHidden = true
 
         for layer in [border, fill, picture] {
-            layer.contentsScale = screen.backingScaleFactor
             view.layer?.addSublayer(layer)
         }
-        w.orderFrontRegardless()
         return Surface(window: w, border: border, fill: fill, picture: picture)
     }
 }

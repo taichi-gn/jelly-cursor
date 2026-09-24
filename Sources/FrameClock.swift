@@ -15,6 +15,9 @@ final class FrameClock {
     init(onFrame: @escaping (CGFloat) -> Bool, onIdle: @escaping () -> Void) {
         self.onFrame = onFrame
         self.onIdle = onIdle
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(screensChanged),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     func start() {
@@ -48,6 +51,11 @@ final class FrameClock {
         if onFrame(CGFloat(dt)) {
             sleep(at: mouse)
         }
+    }
+
+    // マウスがある画面が外されると、その画面の表示リンクが呼ばれなくなって、frame での付け替えも起きなくなりうる
+    @objc private func screensChanged() {
+        if link != nil { attach(to: Self.screenUnderMouse()) }
     }
 
     private func sleep(at mouse: CGPoint) {

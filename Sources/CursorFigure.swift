@@ -39,3 +39,12 @@ protocol ImageFigure: Figure {
     var position: CGPoint { get }
     var transform: CATransform3D { get }
 }
+
+extension ImageFigure {
+    // 回して伸ばしたあとの画像を囲む範囲
+    var bounds: CGRect {
+        CGRect(x: -anchor.x * size.width, y: -anchor.y * size.height, width: size.width, height: size.height)
+            .applying(CATransform3DGetAffineTransform(transform))
+            .offsetBy(dx: position.x, dy: position.y)
+    }
+}

@@ -134,20 +134,33 @@ struct CursorShape {
 }
 
 // macOS は文字を打つとマウスを動かすまでカーソルを消す。自前で描く I 字も同じように消すため、
-// 最後のキー入力が最後のマウス移動より新しいかを見る（キー入力の時刻は権限なしで取れる）
+// 最後の文字入力が最後のマウス移動より新しいかを見る（キー入力の時刻は権限なしで取れる）。
+// ⌘・⌃を押しながらのキー（ショートカットやアプリの切り替え）は文字入力として数えない。
+// アプリの切り替えは⌘を離したときに起きるので、カーソルが I 字でない間も毎回読んで、押された瞬間の⌘を捕まえる
 struct TypingWatch {
+    // 同じキー入力を、読むたびの時刻のずれで別の入力と数えないための幅（秒）
+    private static let sameKeyTolerance: TimeInterval = 0.01
     private var lastMouse: CGPoint?
     private var lastMoveTime: TimeInterval
+    private var lastKeyTime: TimeInterval?
+    private var lastTypedTime = -TimeInterval.infinity
 
     init(now: TimeInterval) {
         lastMoveTime = now
     }
 
-    mutating func isTyping(mouse: CGPoint, now: TimeInterval, secondsSinceKeyDown: TimeInterval) -> Bool {
+    var isTyping: Bool { lastTypedTime > lastMoveTime }
+
+    mutating func update(mouse: CGPoint, now: TimeInterval, secondsSinceKeyDown: TimeInterval,
+                         shortcutHeld: @autoclosure () -> Bool) {
         if mouse != lastMouse {
             lastMouse = mouse
             lastMoveTime = now
         }
-        return now - secondsSinceKeyDown > lastMoveTime
+        let keyTime = now - secondsSinceKeyDown
+        if keyTime > (lastKeyTime ?? -.infinity) + Self.sameKeyTolerance {
+            lastKeyTime = keyTime
+            if !shortcutHeld() { lastTypedTime = keyTime }
+        }
     }
 }

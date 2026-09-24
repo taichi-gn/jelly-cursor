@@ -2,9 +2,10 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let arrow = Jelly()
-    private let iBeam = IBeam()
-    private let hand = PointingHand()
+    private var arrow = Jelly()
+    private var iBeam = IBeam()
+    private var hand = PointingHand()
+    private var figures: [Figure] { [arrow, iBeam, hand] }
     private let overlay = Overlay()
     private let cover = CoverWatch()
     private lazy var clock = FrameClock(
@@ -33,12 +34,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func start() {
         isRunning = true
+        // オフの間の移動を1フレームで動いたものとして伸ばさないよう、作り直して今の位置に置く
+        let mouse = NSEvent.mouseLocation
+        arrow = Jelly()
+        iBeam = IBeam()
+        hand = PointingHand()
+        figures.forEach { $0.step(to: mouse, dt: 0) }
         overlay.colors = PointerColors.current()
         lastColorCheck = ProcessInfo.processInfo.systemUptime
         overlay.activate()
         cursorShape = CursorShapeWatch()
         typing = TypingWatch(now: ProcessInfo.processInfo.systemUptime)
-        followCursorState(mouse: NSEvent.mouseLocation)
+        followCursorState(mouse: mouse)
         clock.start()
         cover.start { [unowned self] in self.overlay.windowNumbers }
         toggleItem?.title = "ぐにゃぐにゃ: オン"
@@ -56,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // 眠ってよいなら true を返す。矢印・I 字・指はすべて動かし続け、切り替えた瞬間に形が飛ばないようにする
     private func frame(dt: CGFloat) -> Bool {
         let mouse = NSEvent.mouseLocation
-        let figures: [Figure] = [arrow, iBeam, hand]
+        let figures = self.figures
         figures.forEach { $0.step(to: mouse, dt: dt) }
         followCursorState(mouse: mouse)
         overlay.render()
@@ -71,8 +78,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // - 隠し直しても本物が消えない間（Dock が出ている間など。2つ見えないように）
     private func followCursorState(mouse: CGPoint) {
         refreshColorsIfDue()
+        watchTyping(mouse: mouse)
+        // 眠っている間は描き直しが走らないので、指の画像を差し替えたらここで描く
         if cursorShape.update(), cursorShape.kind == .pointingHand, let cursor = cursorShape.cursor {
             hand.use(cursor)
+            overlay.render()
         }
         let covered = cover.covers(mouse)
         let hideReal = canHideCursor && cursorShape.kind != .other && !covered
@@ -84,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         switch cursorShape.kind {
         case .arrow: overlay.figure = arrow
-        case .iBeam: overlay.figure = hideReal && !isTyping(mouse: mouse) ? iBeam : nil
+        case .iBeam: overlay.figure = hideReal && !typing.isTyping ? iBeam : nil
         case .pointingHand: overlay.figure = hideReal ? hand : nil
         case .other: overlay.figure = nil
         }
@@ -102,10 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func isTyping(mouse: CGPoint) -> Bool {
-        typing.isTyping(
+    private func watchTyping(mouse: CGPoint) {
+        typing.update(
             mouse: mouse, now: ProcessInfo.processInfo.systemUptime,
-            secondsSinceKeyDown: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown))
+            secondsSinceKeyDown: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown),
+            shortcutHeld: !CGEventSource.flagsState(.combinedSessionState).isDisjoint(with: [.maskCommand, .maskControl]))
     }
 
     private func setUpStatusItem() {
