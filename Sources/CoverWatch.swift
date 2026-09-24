@@ -11,7 +11,7 @@ final class CoverWatch {
     private var inFlight = false
     // 止めたときに増やし、止める前に出した問い合わせの結果を捨てる
     private var generation = 0
-    private let ignoreUpTo = Tuning.Render.coverIgnoreSize * ArrowShape.systemPointerScale()
+    var pointerScale: CGFloat = 1
 
     func start(windows: @escaping () -> [CGWindowID]) {
         let t = Timer(timeInterval: Tuning.Render.coverCheckInterval, repeats: true) { [weak self] _ in
@@ -38,13 +38,13 @@ final class CoverWatch {
         guard !inFlight, !ids.isEmpty else { return }
         inFlight = true
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        let ignoreUpTo = self.ignoreUpTo
+        let ignoreUpTo = Tuning.Render.coverIgnoreSize * pointerScale
         let generation = self.generation
-        DispatchQueue.global(qos: .userInteractive).async {
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             let infos = ids.flatMap { CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow], $0) as? [[String: Any]] ?? [] }
             let found = Self.coveringRects(infos, ours: Set(ids), primaryHeight: primaryHeight, ignoreUpTo: ignoreUpTo)
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { [weak self] in
+                MainActor.assumeIsolated {
                     guard let self, self.generation == generation else { return }
                     self.rects = found
                     self.inFlight = false

@@ -38,10 +38,12 @@ struct ArrowShape {
         borderWidth = Tuning.Arrow.borderWidth * scale
     }
 
-    // システム設定の「ポインタの大きさ」。起動時に読むだけなので、変えたらアプリの再起動が要る
+    // システム設定の「ポインタの大きさ」。動作中に変えたときも読めるよう、設定サーバーから読み直す（毎フレームは呼ばない）
     static func systemPointerScale() -> CGFloat {
-        let value = UserDefaults(suiteName: "com.apple.universalaccess")?.double(forKey: "mouseDriverCursorSize") ?? 0
-        return value >= 1 ? min(value, 4) : 1
+        let domain = "com.apple.universalaccess" as CFString
+        CFPreferencesAppSynchronize(domain)
+        let value = (CFPreferencesCopyAppValue("mouseDriverCursorSize" as CFString, domain) as? NSNumber)?.doubleValue ?? 0
+        return value >= 1 ? min(CGFloat(value), 4) : 1
     }
 
     // 辺を細かく区切り、曲げたときに折れ線の角が目立たないようにする

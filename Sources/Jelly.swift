@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 final class Jelly: CursorFigure {
-    private let shape = ArrowShape()
+    private let shape: ArrowShape
     private(set) var points: [CGPoint]
     private var trail = Trail()
     private var heading: Heading
@@ -11,7 +11,8 @@ final class Jelly: CursorFigure {
     private var started = false
     private(set) var isSettled = false
 
-    init() {
+    init(scale: CGFloat = ArrowShape.systemPointerScale()) {
+        shape = ArrowShape(scale: scale)
         heading = Heading(restAngle: shape.baseAngle)
         length = shape.length
         points = Array(repeating: .zero, count: shape.vertices.count)
