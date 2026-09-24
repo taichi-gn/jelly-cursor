@@ -12,12 +12,17 @@ final class PointingHand: ImageFigure {
     private let scale: CGFloat
     // 指は上を向いている
     private var heading = Heading(restAngle: .pi / 2)
+    private var trail = Trail()
+    // 道の向きを測る区間。矢印の胴体と同じ長さにして、矢印と指で向きをそろえる
+    private let pathSpan: CGFloat
+    private var angle: CGFloat = .pi / 2
     private var stretch = SpringValue(omega: Tuning.Hand.omega, dampingRatio: Tuning.Hand.dampingRatio)
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
 
     init(scale: CGFloat = ArrowShape.systemPointerScale()) {
         self.scale = scale
+        pathSpan = ArrowShape(scale: scale).length
         use(.pointingHand)
     }
 
@@ -43,14 +48,29 @@ final class PointingHand: ImageFigure {
                          dt: dt)
         }
         lastMouse = mouse
+        trail.record(mouse, dt: dt)
         position = mouse
-        isSettled = max(heading.restError, stretch.restError * size.height) < Tuning.Settle.threshold
+        angle = pathAngle(at: mouse)
+        isSettled = max(heading.restError, stretch.restError * size.height, trail.length) < Tuning.Settle.threshold
+    }
+
+    // 矢印の胴体と同じく、動いている間は実際に通った道の向きを指す。
+    // 道が短いときや少し動かしただけのときは、ばねで回る向きに寄せる。
+    // 寄せ方も矢印と同じく、角度ではなく向きの線の位置を混ぜる（角度で混ぜると、ゆっくりのとき矢印より大きく回る）
+    private func pathAngle(at mouse: CGPoint) -> CGFloat {
+        let blend = min(trail.length / pathSpan, 1) * heading.commitment
+        let behind = trail.point(at: min(trail.length, pathSpan))
+        let d = hypot(mouse.x - behind.x, mouse.y - behind.y)
+        guard blend > 0, d > 0.0001 else { return heading.angle }
+        let axis = heading.axis
+        return atan2(axis.dy + ((mouse.y - behind.y) / d - axis.dy) * blend,
+                     axis.dx + ((mouse.x - behind.x) / d - axis.dx) * blend)
     }
 
     // 画像の上方向（指の向き）に伸ばしてから、動かした方向へ回す
     var transform: CATransform3D {
         let s = 1 + stretch.value
         let stretched = CATransform3DMakeScale(1 / sqrt(s), s, 1)
-        return CATransform3DConcat(stretched, CATransform3DMakeRotation(heading.angle - .pi / 2, 0, 0, 1))
+        return CATransform3DConcat(stretched, CATransform3DMakeRotation(angle - .pi / 2, 0, 0, 1))
     }
 }
