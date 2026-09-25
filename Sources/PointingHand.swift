@@ -12,12 +12,18 @@ final class PointingHand: ImageFigure {
     private let scale: CGFloat
     // 指は上を向いている
     private var heading = Heading(restAngle: .pi / 2)
+    private var trail = Trail()
+    // 道の向きを測る区間。矢印の胴体と同じ長さにして、矢印と指で向きをそろえる
+    private let pathSpan: CGFloat
+    private var angle: CGFloat = .pi / 2
+    private var lastTurn: CGFloat = 0
     private var stretch = SpringValue(omega: Tuning.Hand.omega, dampingRatio: Tuning.Hand.dampingRatio)
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
 
     init(scale: CGFloat = ArrowShape.systemPointerScale()) {
         self.scale = scale
+        pathSpan = ArrowShape(scale: scale).length
         use(.pointingHand)
     }
 
@@ -43,14 +49,44 @@ final class PointingHand: ImageFigure {
                          dt: dt)
         }
         lastMouse = mouse
+        trail.record(mouse, dt: dt)
         position = mouse
-        isSettled = max(heading.restError, stretch.restError * size.height) < Tuning.Settle.threshold
+        // 道の向きは手ぶれで毎フレーム少しずつ揺れるので、ならしてから向ける。
+        // 速く動かし始めたときなどに、指が1フレームで大きく回って飛んだように見えないよう、回る速さに上限を設ける
+        let smoothed = wrapAngle(pathAngle(at: mouse) - angle) * (1 - exp(-dt / Tuning.Hand.angleSmoothing))
+        let maxTurn = Tuning.Hand.maxTurnRate * dt
+        angle = wrapAngle(angle + min(max(smoothed, -maxTurn), maxTurn))
+        let lag = abs(wrapAngle(heading.angle - angle)) * Tuning.Turn.armLength
+        isSettled = max(heading.restError, stretch.restError * size.height, trail.length, lag) < Tuning.Settle.threshold
+    }
+
+    // 矢印の胴体と同じく、動いている間は実際に通った道の向きを指す。
+    // 道が短いときや少し動かしただけのときは、ばねで回る向きに寄せる。
+    // 折り返した道（道のりに比べて先端と後ろの点が近い）では、道の向きが一瞬で裏返るので、ばねの向きに寄せる
+    private func pathAngle(at mouse: CGPoint) -> CGFloat {
+        let span = min(trail.length, pathSpan)
+        let behind = trail.point(at: span)
+        let d = hypot(mouse.x - behind.x, mouse.y - behind.y)
+        // 止まって道が消えたら、前の動きで回した側は忘れる。次の動き出しを、前の動きの側に引きずらない
+        guard span > 0, d > 0.0001 else {
+            lastTurn = 0
+            return heading.angle
+        }
+        var turn = wrapAngle(atan2(mouse.y - behind.y, mouse.x - behind.x) - heading.angle)
+        // ばねの向きとほぼ逆の道（止まった指から真下へ動き出したときなど）は、右回りと左回りのどちらでもほぼ同じ角度なので、
+        // 手ぶれで回る側が入れ替わって指が行ったり来たりしないよう、前のフレームと同じ側へ回す
+        if abs(turn) > Tuning.Hand.oppositeTurn, turn * lastTurn < 0 {
+            turn += turn > 0 ? -2 * .pi : 2 * .pi
+        }
+        lastTurn = turn
+        let blend = min(trail.length / pathSpan, 1) * heading.commitment * (d / span)
+        return heading.angle + turn * blend
     }
 
     // 画像の上方向（指の向き）に伸ばしてから、動かした方向へ回す
     var transform: CATransform3D {
         let s = 1 + stretch.value
         let stretched = CATransform3DMakeScale(1 / sqrt(s), s, 1)
-        return CATransform3DConcat(stretched, CATransform3DMakeRotation(heading.angle - .pi / 2, 0, 0, 1))
+        return CATransform3DConcat(stretched, CATransform3DMakeRotation(angle - .pi / 2, 0, 0, 1))
     }
 }

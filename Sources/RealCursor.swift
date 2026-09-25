@@ -22,10 +22,32 @@ enum RealCursor {
         isHidden = true
     }
 
+    // 隠せない状態の判定も捨てる。オフにしたときなどに持ち越すと、次に隠したとき本物に任せたままになる
     static func show() {
         guard isHidden else { return }
         CGDisplayShowCursor(CGMainDisplayID())
         isHidden = false
+        isOverpowered = false
+        rehidLastCheck = false
+        hiddenStreak = 0
+    }
+
+    // 動画の再生中や文字入力中に、他のアプリが本物のカーソルを隠しているか。
+    // 隠れているのが自分のせいだけかは直接は分からないので、自分の分だけ戻して、見えるようになるかを見る。
+    // 戻したことは少し遅れて反映される（測ると多くは0.1ms以内、まれに2ms台）ので、見えるまで待ってすぐ隠し直す
+    static func isHiddenByOthers() -> Bool {
+        guard isHidden, let isVisible, isVisible() == 0 else { return false }
+        CGDisplayShowCursor(CGMainDisplayID())
+        let deadline = ProcessInfo.processInfo.systemUptime + Tuning.Render.otherHideProbeTimeout
+        var hidden = true
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            if isVisible() != 0 {
+                hidden = false
+                break
+            }
+        }
+        CGDisplayHideCursor(CGMainDisplayID())
+        return hidden
     }
 
     // 隠し直しても効かない状態（Dock が出ている間など）。この間は自前の絵を消して本物に任せる。
@@ -136,7 +158,9 @@ struct CursorShape {
 // macOS は文字を打つとマウスを動かすまでカーソルを消す。自前で描く I 字も同じように消すため、
 // 最後の文字入力が最後のマウス移動より新しいかを見る（キー入力の時刻は権限なしで取れる）。
 // ⌘・⌃を押しながらのキー（ショートカットやアプリの切り替え）は文字入力として数えない。
-// アプリの切り替えは⌘を離したときに起きるので、カーソルが I 字でない間も毎回読んで、押された瞬間の⌘を捕まえる
+// アプリの切り替えは⌘を離したときに起きるので、カーソルが I 字でない間も毎回読んで、押された瞬間の⌘を捕まえる。
+// 読む間隔より短く⌘を押して離したときは、キーより後に修飾キーが変わったことで見分ける
+// （Shift や ⌥ を同じくらい短く押して打った文字も入力に数えなくなるが、次の文字で消える）
 struct TypingWatch {
     // 同じキー入力を、読むたびの時刻のずれで別の入力と数えないための幅（秒）
     private static let sameKeyTolerance: TimeInterval = 0.01
@@ -152,6 +176,7 @@ struct TypingWatch {
     var isTyping: Bool { lastTypedTime > lastMoveTime }
 
     mutating func update(mouse: CGPoint, now: TimeInterval, secondsSinceKeyDown: TimeInterval,
+                         secondsSinceFlagsChanged: @autoclosure () -> TimeInterval,
                          shortcutHeld: @autoclosure () -> Bool) {
         if mouse != lastMouse {
             lastMouse = mouse
@@ -160,7 +185,48 @@ struct TypingWatch {
         let keyTime = now - secondsSinceKeyDown
         if keyTime > (lastKeyTime ?? -.infinity) + Self.sameKeyTolerance {
             lastKeyTime = keyTime
-            if !shortcutHeld() { lastTypedTime = keyTime }
+            let modifierChangedAfter = now - secondsSinceFlagsChanged() > keyTime
+            if !shortcutHeld() && !modifierChangedAfter { lastTypedTime = keyTime }
         }
+    }
+}
+
+// 他のアプリが本物のカーソルを隠しているかを、マウスが止まっている間だけ間をあけて調べる。
+// 他のアプリが隠すのは動画を放置したときや文字を打っているときで、マウスを動かせば表示に戻る
+struct OtherHideWatch {
+    private var lastMouse: CGPoint?
+    private var stillSince: TimeInterval
+    private var lastProbe = -TimeInterval.infinity
+    private(set) var isHidden = false
+
+    init(now: TimeInterval) {
+        stillSince = now
+    }
+
+    // lastInput は最後のキー入力かクリックの時刻
+    mutating func update(mouse: CGPoint, now: TimeInterval, lastInput: @autoclosure () -> TimeInterval, probe: () -> Bool) {
+        if mouse != lastMouse {
+            lastMouse = mouse
+            stillSince = now
+            isHidden = false
+            return
+        }
+        guard now - stillSince >= Tuning.Render.otherHideDelay else { return }
+        // 隠れていると分かったあとは、調べるたびに待たされるので間隔をあける。
+        // ただし、キーやクリックに応じて他のアプリが表示に戻すことがある（動画の一時停止など）ので、
+        // そのあとは相手が戻し終えるのを少し待ってから、いつもの間隔で確かめ直す
+        var interval = Tuning.Render.otherHideInterval
+        if isHidden {
+            let input = lastInput()
+            if input > lastProbe {
+                // 相手が戻し終える前に確かめて、確かめ直しの機会を使い切らないよう待つ
+                guard now - input >= Tuning.Render.otherHideInputSettle else { return }
+            } else {
+                interval = Tuning.Render.otherHideRecheckInterval
+            }
+        }
+        guard now - lastProbe >= interval else { return }
+        lastProbe = now
+        isHidden = probe()
     }
 }
