@@ -160,7 +160,7 @@ struct CursorShape {
 // ⌘・⌃を押しながらのキー（ショートカットやアプリの切り替え）は文字入力として数えない。
 // アプリの切り替えは⌘を離したときに起きるので、カーソルが I 字でない間も毎回読んで、押された瞬間の⌘を捕まえる。
 // 読む間隔より短く⌘を押して離したときは、キーより後に修飾キーが変わったことで見分ける
-// （Shift だけを同じくらい短く押した大文字も入力に数えなくなるが、次の文字で消える）
+// （Shift や ⌥ を同じくらい短く押して打った文字も入力に数えなくなるが、次の文字で消える）
 struct TypingWatch {
     // 同じキー入力を、読むたびの時刻のずれで別の入力と数えないための幅（秒）
     private static let sameKeyTolerance: TimeInterval = 0.01
@@ -210,8 +210,10 @@ struct OtherHideWatch {
             isHidden = false
             return
         }
-        guard now - stillSince >= Tuning.Render.otherHideDelay,
-              now - lastProbe >= Tuning.Render.otherHideInterval else { return }
+        // 隠れていると分かったあとは、調べるたびに待たされるので間隔をあける。
+        // マウスを動かさずに他のアプリが表示に戻すことはまれ
+        let interval = isHidden ? Tuning.Render.otherHideRecheckInterval : Tuning.Render.otherHideInterval
+        guard now - stillSince >= Tuning.Render.otherHideDelay, now - lastProbe >= interval else { return }
         lastProbe = now
         isHidden = probe()
     }

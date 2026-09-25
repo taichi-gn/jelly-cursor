@@ -50,21 +50,27 @@ final class PointingHand: ImageFigure {
         lastMouse = mouse
         trail.record(mouse, dt: dt)
         position = mouse
-        angle = pathAngle(at: mouse)
+        // 速く動かし始めたときなどに、指が1フレームで大きく回って飛んだように見えないよう、回る速さに上限を設ける
+        let maxTurn = Tuning.Hand.maxTurnRate * dt
+        angle = wrapAngle(angle + min(max(wrapAngle(pathAngle(at: mouse) - angle), -maxTurn), maxTurn))
         isSettled = max(heading.restError, stretch.restError * size.height, trail.length) < Tuning.Settle.threshold
     }
 
     // 矢印の胴体と同じく、動いている間は実際に通った道の向きを指す。
     // 道が短いときや少し動かしただけのときは、ばねで回る向きに寄せる。
-    // 寄せ方も矢印と同じく、角度ではなく向きの線の位置を混ぜる（角度で混ぜると、ゆっくりのとき矢印より大きく回る）
+    // 折り返した道（道のりに比べて先端と後ろの点が近い）と、ばねの向きとほぼ逆の道でも、ばねの向きに寄せる。
+    // そうしないと、道の向きが一瞬で裏返るのに合わせて指も1フレームで裏返る
     private func pathAngle(at mouse: CGPoint) -> CGFloat {
-        let blend = min(trail.length / pathSpan, 1) * heading.commitment
-        let behind = trail.point(at: min(trail.length, pathSpan))
+        let span = min(trail.length, pathSpan)
+        let behind = trail.point(at: span)
         let d = hypot(mouse.x - behind.x, mouse.y - behind.y)
-        guard blend > 0, d > 0.0001 else { return heading.angle }
-        let axis = heading.axis
-        return atan2(axis.dy + ((mouse.y - behind.y) / d - axis.dy) * blend,
-                     axis.dx + ((mouse.x - behind.x) / d - axis.dx) * blend)
+        guard span > 0, d > 0.0001 else { return heading.angle }
+        let turn = wrapAngle(atan2(mouse.y - behind.y, mouse.x - behind.x) - heading.angle)
+        // 135度までは1、180度で0
+        let t = min(max((.pi - abs(turn)) / (.pi / 4), 0), 1)
+        let facing = t * t * (3 - 2 * t)
+        let blend = min(trail.length / pathSpan, 1) * heading.commitment * (d / span) * facing
+        return heading.angle + turn * blend
     }
 
     // 画像の上方向（指の向き）に伸ばしてから、動かした方向へ回す

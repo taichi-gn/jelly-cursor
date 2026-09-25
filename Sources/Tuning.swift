@@ -74,6 +74,8 @@ enum Tuning {
         static let omega: CGFloat = 26
         static let dampingRatio: CGFloat = 0.45
         static let velocitySmoothing: CGFloat = 20
+        // 回る速さの上限（ラジアン/秒）。120Hzで1フレーム30度
+        static let maxTurnRate: CGFloat = .pi / 6 * 120
     }
 
     enum Settle {
@@ -95,6 +97,7 @@ enum Tuning {
         // 調べる瞬間に本物が映っても重なるよう、矢印が元の形に戻りきってから調べる
         static let otherHideDelay: TimeInterval = 1
         static let otherHideInterval: TimeInterval = 0.5
+        static let otherHideRecheckInterval: TimeInterval = 2
         // 自分の分を戻してから、この秒数見えなければ他のアプリが隠していると判断する。
         // 他のアプリが隠している間は、調べるたびにこの秒数だけ待つ
         static let otherHideProbeTimeout: TimeInterval = 0.01

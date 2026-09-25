@@ -52,8 +52,8 @@ final class Overlay {
     func render() {
         let outline = figure as? CursorFigure
         let picture = figure as? ImageFigure
-        // 縁と影は輪郭の外にはみ出すので、そのぶん広げて、隣の画面にかかる分も描く
-        let spill = (outline?.borderWidth ?? 0) + Tuning.Render.shadowRadius
+        // 縁と影は輪郭の外にはみ出すので、そのぶん広げて、隣の画面にかかる分も描く。影のぼかしは半径の3倍ほどまで広がる
+        let spill = (outline?.borderWidth ?? 0) + Tuning.Render.shadowRadius * 3
             + max(abs(Tuning.Render.shadowOffset.width), abs(Tuning.Render.shadowOffset.height))
         let bounds = outline.map { $0.bounds.insetBy(dx: -spill, dy: -spill) } ?? .null
         let pictureBounds = picture?.bounds ?? .null
