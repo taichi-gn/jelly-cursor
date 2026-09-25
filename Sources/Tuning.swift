@@ -74,6 +74,8 @@ enum Tuning {
         static let omega: CGFloat = 26
         static let dampingRatio: CGFloat = 0.45
         static let velocitySmoothing: CGFloat = 20
+        // 指の向きをならす時間（秒）。長いほど手ぶれで震えにくいが、矢印より遅れる
+        static let angleSmoothing: CGFloat = 0.01
         // 回る速さの上限（ラジアン/秒）。120Hzで1フレーム30度
         static let maxTurnRate: CGFloat = .pi / 6 * 120
         // 道の向きがばねの向きからこの角度より離れていたら、ほぼ逆とみなす

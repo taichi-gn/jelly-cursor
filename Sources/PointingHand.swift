@@ -51,10 +51,13 @@ final class PointingHand: ImageFigure {
         lastMouse = mouse
         trail.record(mouse, dt: dt)
         position = mouse
+        // 道の向きは手ぶれで毎フレーム少しずつ揺れるので、ならしてから向ける。
         // 速く動かし始めたときなどに、指が1フレームで大きく回って飛んだように見えないよう、回る速さに上限を設ける
+        let smoothed = wrapAngle(pathAngle(at: mouse) - angle) * (1 - exp(-dt / Tuning.Hand.angleSmoothing))
         let maxTurn = Tuning.Hand.maxTurnRate * dt
-        angle = wrapAngle(angle + min(max(wrapAngle(pathAngle(at: mouse) - angle), -maxTurn), maxTurn))
-        isSettled = max(heading.restError, stretch.restError * size.height, trail.length) < Tuning.Settle.threshold
+        angle = wrapAngle(angle + min(max(smoothed, -maxTurn), maxTurn))
+        let lag = abs(wrapAngle(heading.angle - angle)) * Tuning.Turn.armLength
+        isSettled = max(heading.restError, stretch.restError * size.height, trail.length, lag) < Tuning.Settle.threshold
     }
 
     // 矢印の胴体と同じく、動いている間は実際に通った道の向きを指す。
@@ -64,7 +67,11 @@ final class PointingHand: ImageFigure {
         let span = min(trail.length, pathSpan)
         let behind = trail.point(at: span)
         let d = hypot(mouse.x - behind.x, mouse.y - behind.y)
-        guard span > 0, d > 0.0001 else { return heading.angle }
+        // 止まって道が消えたら、前の動きで回した側は忘れる。次の動き出しを、前の動きの側に引きずらない
+        guard span > 0, d > 0.0001 else {
+            lastTurn = 0
+            return heading.angle
+        }
         var turn = wrapAngle(atan2(mouse.y - behind.y, mouse.x - behind.x) - heading.angle)
         // ばねの向きとほぼ逆の道（止まった指から真下へ動き出したときなど）は、右回りと左回りのどちらでもほぼ同じ角度なので、
         // 手ぶれで回る側が入れ替わって指が行ったり来たりしないよう、前のフレームと同じ側へ回す

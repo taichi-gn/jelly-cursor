@@ -133,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func secondsSinceKeyOrClick() -> TimeInterval {
-        [CGEventType.keyDown, .leftMouseDown, .rightMouseDown]
+        [CGEventType.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
             .map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }
             .min() ?? .infinity
     }

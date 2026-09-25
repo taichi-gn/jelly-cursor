@@ -218,8 +218,12 @@ struct OtherHideWatch {
         var interval = Tuning.Render.otherHideInterval
         if isHidden {
             let input = lastInput()
-            let settledInput = input > lastProbe && now - input >= Tuning.Render.otherHideInputSettle
-            if !settledInput { interval = Tuning.Render.otherHideRecheckInterval }
+            if input > lastProbe {
+                // 相手が戻し終える前に確かめて、確かめ直しの機会を使い切らないよう待つ
+                guard now - input >= Tuning.Render.otherHideInputSettle else { return }
+            } else {
+                interval = Tuning.Render.otherHideRecheckInterval
+            }
         }
         guard now - lastProbe >= interval else { return }
         lastProbe = now
