@@ -203,17 +203,25 @@ struct OtherHideWatch {
         stillSince = now
     }
 
-    mutating func update(mouse: CGPoint, now: TimeInterval, probe: () -> Bool) {
+    // lastInput は最後のキー入力かクリックの時刻
+    mutating func update(mouse: CGPoint, now: TimeInterval, lastInput: @autoclosure () -> TimeInterval, probe: () -> Bool) {
         if mouse != lastMouse {
             lastMouse = mouse
             stillSince = now
             isHidden = false
             return
         }
+        guard now - stillSince >= Tuning.Render.otherHideDelay else { return }
         // 隠れていると分かったあとは、調べるたびに待たされるので間隔をあける。
-        // マウスを動かさずに他のアプリが表示に戻すことはまれ
-        let interval = isHidden ? Tuning.Render.otherHideRecheckInterval : Tuning.Render.otherHideInterval
-        guard now - stillSince >= Tuning.Render.otherHideDelay, now - lastProbe >= interval else { return }
+        // ただし、キーやクリックに応じて他のアプリが表示に戻すことがある（動画の一時停止など）ので、
+        // そのあとは相手が戻し終えるのを少し待ってから、いつもの間隔で確かめ直す
+        var interval = Tuning.Render.otherHideInterval
+        if isHidden {
+            let input = lastInput()
+            let settledInput = input > lastProbe && now - input >= Tuning.Render.otherHideInputSettle
+            if !settledInput { interval = Tuning.Render.otherHideRecheckInterval }
+        }
+        guard now - lastProbe >= interval else { return }
         lastProbe = now
         isHidden = probe()
     }

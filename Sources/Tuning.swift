@@ -76,6 +76,8 @@ enum Tuning {
         static let velocitySmoothing: CGFloat = 20
         // 回る速さの上限（ラジアン/秒）。120Hzで1フレーム30度
         static let maxTurnRate: CGFloat = .pi / 6 * 120
+        // 道の向きがばねの向きからこの角度より離れていたら、ほぼ逆とみなす
+        static let oppositeTurn: CGFloat = .pi * 3 / 4
     }
 
     enum Settle {
@@ -98,6 +100,7 @@ enum Tuning {
         static let otherHideDelay: TimeInterval = 1
         static let otherHideInterval: TimeInterval = 0.5
         static let otherHideRecheckInterval: TimeInterval = 2
+        static let otherHideInputSettle: TimeInterval = 0.3
         // 自分の分を戻してから、この秒数見えなければ他のアプリが隠していると判断する。
         // 他のアプリが隠している間は、調べるたびにこの秒数だけ待つ
         static let otherHideProbeTimeout: TimeInterval = 0.01

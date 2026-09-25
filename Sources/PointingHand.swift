@@ -16,6 +16,7 @@ final class PointingHand: ImageFigure {
     // 道の向きを測る区間。矢印の胴体と同じ長さにして、矢印と指で向きをそろえる
     private let pathSpan: CGFloat
     private var angle: CGFloat = .pi / 2
+    private var lastTurn: CGFloat = 0
     private var stretch = SpringValue(omega: Tuning.Hand.omega, dampingRatio: Tuning.Hand.dampingRatio)
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
@@ -58,18 +59,20 @@ final class PointingHand: ImageFigure {
 
     // 矢印の胴体と同じく、動いている間は実際に通った道の向きを指す。
     // 道が短いときや少し動かしただけのときは、ばねで回る向きに寄せる。
-    // 折り返した道（道のりに比べて先端と後ろの点が近い）と、ばねの向きとほぼ逆の道でも、ばねの向きに寄せる。
-    // そうしないと、道の向きが一瞬で裏返るのに合わせて指も1フレームで裏返る
+    // 折り返した道（道のりに比べて先端と後ろの点が近い）では、道の向きが一瞬で裏返るので、ばねの向きに寄せる
     private func pathAngle(at mouse: CGPoint) -> CGFloat {
         let span = min(trail.length, pathSpan)
         let behind = trail.point(at: span)
         let d = hypot(mouse.x - behind.x, mouse.y - behind.y)
         guard span > 0, d > 0.0001 else { return heading.angle }
-        let turn = wrapAngle(atan2(mouse.y - behind.y, mouse.x - behind.x) - heading.angle)
-        // 135度までは1、180度で0
-        let t = min(max((.pi - abs(turn)) / (.pi / 4), 0), 1)
-        let facing = t * t * (3 - 2 * t)
-        let blend = min(trail.length / pathSpan, 1) * heading.commitment * (d / span) * facing
+        var turn = wrapAngle(atan2(mouse.y - behind.y, mouse.x - behind.x) - heading.angle)
+        // ばねの向きとほぼ逆の道（止まった指から真下へ動き出したときなど）は、右回りと左回りのどちらでもほぼ同じ角度なので、
+        // 手ぶれで回る側が入れ替わって指が行ったり来たりしないよう、前のフレームと同じ側へ回す
+        if abs(turn) > Tuning.Hand.oppositeTurn, turn * lastTurn < 0 {
+            turn += turn > 0 ? -2 * .pi : 2 * .pi
+        }
+        lastTurn = turn
+        let blend = min(trail.length / pathSpan, 1) * heading.commitment * (d / span)
         return heading.angle + turn * blend
     }
 

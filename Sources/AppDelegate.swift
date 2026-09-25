@@ -101,7 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hideReal = canHideCursor && cursorShape.kind != .other && !covered
         if hideReal { RealCursor.hide() } else { RealCursor.show() }
         RealCursor.rehideIfShown()
-        otherHide.update(mouse: mouse, now: ProcessInfo.processInfo.systemUptime) { RealCursor.isHiddenByOthers() }
+        let now = ProcessInfo.processInfo.systemUptime
+        otherHide.update(mouse: mouse, now: now, lastInput: now - Self.secondsSinceKeyOrClick()) { RealCursor.isHiddenByOthers() }
         if RealCursor.isOverpowered || covered || otherHide.isHidden {
             overlay.figure = nil
             return
@@ -129,6 +130,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if scale != self.pointerScale { self.rebuildFigures(scale: scale, at: NSEvent.mouseLocation) }
             }
         }
+    }
+
+    private static func secondsSinceKeyOrClick() -> TimeInterval {
+        [CGEventType.keyDown, .leftMouseDown, .rightMouseDown]
+            .map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }
+            .min() ?? .infinity
     }
 
     private func watchTyping(mouse: CGPoint) {
