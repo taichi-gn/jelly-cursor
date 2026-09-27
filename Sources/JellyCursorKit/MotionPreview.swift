@@ -5,13 +5,17 @@ import SwiftUI
 // 設定画面のプレビュー。決まった道筋（PreviewScript）でマウスを動かしたときの矢印と I 字を、今の設定の動きで描く
 struct MotionPreview: View {
     let style: MotionStyle
-    @State private var model = PreviewModel()
+    // 初期値の式は描き直すたびに評価されるので、表示されたときに1回だけ作る
+    @State private var model: PreviewModel?
 
     var body: some View {
         TimelineView(.animation) { context in
             Canvas { graphics, size in
-                model.draw(in: &graphics, size: size, date: context.date, style: style)
+                model?.draw(in: &graphics, size: size, date: context.date, style: style)
             }
+        }
+        .onAppear {
+            if model == nil { model = PreviewModel() }
         }
         .accessibilityElement()
         .accessibilityLabel("動きのプレビュー")

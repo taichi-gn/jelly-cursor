@@ -28,6 +28,7 @@ package struct SystemConditions: Equatable, Sendable {
 }
 
 package enum PauseReason: Equatable, Sendable {
+    case noCursorKinds
     case sessionInactive
     case screenLocked
     case screenSaver
@@ -39,6 +40,7 @@ package enum PauseReason: Equatable, Sendable {
 
     package var message: String {
         switch self {
+        case .noCursorKinds: "描くカーソルの種類がすべてオフです"
         case .sessionInactive: "ほかのユーザーに切り替え中"
         case .screenLocked: "画面がロックされています"
         case .screenSaver: "スクリーンセーバーが動いています"
@@ -64,7 +66,9 @@ package enum Activity: Equatable, Sendable {
     package init(settings: SettingsValues, conditions: SystemConditions, safeMode: Bool) {
         guard settings.isEnabled else { self = .off; return }
         guard !safeMode else { self = .safeMode; return }
-        if !conditions.sessionActive {
+        if !settings.cursorKinds.drawsAny {
+            self = .paused(.noCursorKinds)
+        } else if !conditions.sessionActive {
             self = .paused(.sessionInactive)
         } else if conditions.screenLocked {
             self = .paused(.screenLocked)

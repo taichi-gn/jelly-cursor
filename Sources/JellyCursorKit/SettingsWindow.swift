@@ -10,12 +10,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let state: AppState
     private let actions: AppActions
     private let navigation = SettingsNavigation()
+    private let recorder: KeyRecorder
     private var window: NSWindow?
 
     init(settings: AppSettings, state: AppState, actions: AppActions) {
         self.settings = settings
         self.state = state
         self.actions = actions
+        recorder = KeyRecorder(onRecordingChange: actions.suspendShortcut)
     }
 
     // メニューバーだけのアプリ（.accessory）のままだと前面に出せないので、開いている間だけふつうのアプリにする
@@ -29,11 +31,18 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        recorder.stop()
         NSApp.setActivationPolicy(.accessory)
     }
 
+    // ほかのアプリへ移ったら、ショートカットの記録をやめて元に戻す
+    func windowDidResignKey(_ notification: Notification) {
+        recorder.stop()
+    }
+
     private func makeWindow() -> NSWindow {
-        let view = SettingsView(settings: settings, state: state, actions: actions, navigation: navigation)
+        let view = SettingsView(settings: settings, state: state, actions: actions, navigation: navigation,
+                                recorder: recorder)
         let controller = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: controller)
         window.title = "JellyCursor の設定"

@@ -23,7 +23,10 @@ final class SystemMonitor {
     private static let fullScreenCheckInterval: TimeInterval = 1
 
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    private var distributedObserver: DistributedObserver?
     private var frontPID: pid_t?
+    // 本体と画面は別々に眠って起きるので、どちらかが眠っている間は止める
+    private var sleeping: Set<Sleeper> = []
     private var wakeWork: DispatchWorkItem?
     private var rebuildWork: DispatchWorkItem?
     private var fullScreenTimer: Timer?
@@ -44,10 +47,10 @@ final class SystemMonitor {
             $0.conditions.sessionActive = true
             $0.requestRebuild()
         }
-        observe(workspace, NSWorkspace.willSleepNotification) { $0.setAsleep(true) }
-        observe(workspace, NSWorkspace.didWakeNotification) { $0.setAsleep(false) }
-        observe(workspace, NSWorkspace.screensDidSleepNotification) { $0.setAsleep(true) }
-        observe(workspace, NSWorkspace.screensDidWakeNotification) { $0.setAsleep(false) }
+        observe(workspace, NSWorkspace.willSleepNotification) { $0.sleep(.system) }
+        observe(workspace, NSWorkspace.didWakeNotification) { $0.wake(.system) }
+        observe(workspace, NSWorkspace.screensDidSleepNotification) { $0.sleep(.displays) }
+        observe(workspace, NSWorkspace.screensDidWakeNotification) { $0.wake(.displays) }
         observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) {
             $0.conditions.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         }
@@ -64,14 +67,16 @@ final class SystemMonitor {
             $0.conditions.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
 
-        let distributed = DistributedNotificationCenter.default()
-        observe(distributed, Notification.Name("com.apple.screenIsLocked")) { $0.conditions.screenLocked = true }
-        observe(distributed, Notification.Name("com.apple.screenIsUnlocked")) {
-            $0.conditions.screenLocked = false
-            $0.requestRebuild()
-        }
-        observe(distributed, Notification.Name("com.apple.screensaver.didstart")) { $0.conditions.screenSaverRunning = true }
-        observe(distributed, Notification.Name("com.apple.screensaver.didstop")) { $0.conditions.screenSaverRunning = false }
+        // ロックとスクリーンセーバーは、ほかのプロセスからの知らせ（分散通知）で届く
+        distributedObserver = DistributedObserver([
+            Notification.Name("com.apple.screenIsLocked"): { [weak self] in self?.conditions.screenLocked = true },
+            Notification.Name("com.apple.screenIsUnlocked"): { [weak self] in
+                self?.conditions.screenLocked = false
+                self?.requestRebuild()
+            },
+            Notification.Name("com.apple.screensaver.didstart"): { [weak self] in self?.conditions.screenSaverRunning = true },
+            Notification.Name("com.apple.screensaver.didstop"): { [weak self] in self?.conditions.screenSaverRunning = false },
+        ]) { [weak self] in self?.onChange?() }
 
         CGDisplayRegisterReconfigurationCallback(displaysReconfigured, nil)
         updateFullScreenTimer()
@@ -90,16 +95,25 @@ final class SystemMonitor {
         observers.append((center, token))
     }
 
-    private func setAsleep(_ asleep: Bool) {
+    private func sleep(_ sleeper: Sleeper) {
         wakeWork?.cancel()
         wakeWork = nil
-        guard !asleep else {
-            conditions.asleep = true
-            return
+        sleeping.insert(sleeper)
+        conditions.asleep = true
+    }
+
+    // 本体と画面の両方が起きたら、画面の準備ができるのを少し待ってから、作り直して動かす
+    private func wake(_ sleeper: Sleeper) {
+        sleeping.remove(sleeper)
+        // 画面が眠ったという知らせを取りこぼしていても、本体が起きたときに画面が点いていれば起きた扱いにする
+        if sleeper == .system && CGDisplayIsAsleep(CGMainDisplayID()) == 0 {
+            sleeping.remove(.displays)
         }
+        guard sleeping.isEmpty else { return }
+        wakeWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self else { return }
+                guard let self, self.sleeping.isEmpty else { return }
                 self.conditions.asleep = false
                 self.onNeedsRebuild?()
                 self.onChange?()
@@ -129,10 +143,10 @@ final class SystemMonitor {
         if let app, app.pid != ProcessInfo.processInfo.processIdentifier, let identity = app.identity {
             lastOtherApp = identity
         }
-        // 前のアプリについての問い合わせの結果は捨てて、調べ直す
+        // 前のアプリについての問い合わせの結果は捨てて、調べ直す。結果が出るまでは前の値のままにして、
+        // 全画面のアプリどうしを切り替えたときに、一瞬だけ動き出して本物のカーソルを隠さないようにする
         fullScreenGeneration += 1
         fullScreenInFlight = false
-        conditions.frontAppFullScreen = false
         checkFullScreen()
         onChange?()
     }
@@ -142,8 +156,9 @@ final class SystemMonitor {
         fullScreenTimer = nil
         fullScreenGeneration += 1
         fullScreenInFlight = false
+        // 見ないときは全画面かどうかを使わないので、知らせずに戻しておく
         guard watchesFullScreen, Self.current === self else {
-            setFullScreen(false)
+            conditions.frontAppFullScreen = false
             return
         }
         let timer = Timer(timeInterval: Self.fullScreenCheckInterval, repeats: true) { [weak self] _ in
@@ -184,6 +199,34 @@ final class SystemMonitor {
         guard conditions.frontAppFullScreen != fullScreen else { return }
         conditions.frontAppFullScreen = fullScreen
         onChange?()
+    }
+}
+
+private enum Sleeper {
+    case system, displays
+}
+
+// ほかのプロセスからの知らせ（分散通知）を受け取る。ふつうの受け取り方では、アプリが前面にいない間
+// （JellyCursor はほとんどいつもそう）は届くのを止められ、前面に来たときにまとめて届くことがあるので、すぐ届けるよう頼む
+@MainActor
+private final class DistributedObserver: NSObject {
+    private let handlers: [Notification.Name: () -> Void]
+    private let afterEach: () -> Void
+
+    init(_ handlers: [Notification.Name: () -> Void], afterEach: @escaping () -> Void) {
+        self.handlers = handlers
+        self.afterEach = afterEach
+        super.init()
+        let center = DistributedNotificationCenter.default()
+        for name in handlers.keys {
+            center.addObserver(self, selector: #selector(receive(_:)), name: name, object: nil,
+                               suspensionBehavior: .deliverImmediately)
+        }
+    }
+
+    @objc private func receive(_ notification: Notification) {
+        handlers[notification.name]?()
+        afterEach()
     }
 }
 

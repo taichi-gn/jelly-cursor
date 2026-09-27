@@ -3,12 +3,10 @@ import JellyCursorCore
 import Observation
 import SwiftUI
 
-// ショートカットを記録するボタン。押してから次に押したキーの組み合わせを記録する。
-// esc でやめ、delete で消す。記録している間は onRecordingChange(true) で今のショートカットを外してもらう
+// ショートカットを記録するボタン。押してから次に押したキーの組み合わせを記録する。esc でやめ、delete で消す
 struct ShortcutRecorder: View {
     @Binding var combo: KeyCombo?
-    let onRecordingChange: (Bool) -> Void
-    @State private var recorder = KeyRecorder()
+    let recorder: KeyRecorder
 
     var body: some View {
         HStack(spacing: 6) {
@@ -33,24 +31,30 @@ struct ShortcutRecorder: View {
                 .help("ショートカットを消す")
             }
         }
-        .onChange(of: recorder.isRecording) { _, recording in
-            onRecordingChange(recording)
-        }
+        // ほかのタブへ移ったら記録をやめる
         .onDisappear { recorder.stop() }
     }
 }
 
+// キーの記録。記録している間は onRecordingChange(true) で今のショートカットを外してもらい（押すと切り替わってしまうので）、
+// やめたら必ず onRecordingChange(false) で戻してもらう。設定画面の窓を閉じたときや前面から外れたときも、窓の側からやめる
 @MainActor
 @Observable
-private final class KeyRecorder {
+final class KeyRecorder {
     private(set) var isRecording = false
+    @ObservationIgnored private let onRecordingChange: (Bool) -> Void
     @ObservationIgnored private var monitor: Any?
     @ObservationIgnored private var onRecord: ((KeyCombo?) -> Void)?
+
+    init(onRecordingChange: @escaping (Bool) -> Void) {
+        self.onRecordingChange = onRecordingChange
+    }
 
     func start(onRecord: @escaping (KeyCombo?) -> Void) {
         stop()
         self.onRecord = onRecord
         isRecording = true
+        onRecordingChange(true)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let press = KeyPress(event)
             let consumed = MainActor.assumeIsolated { self?.handle(press) ?? false }
@@ -64,7 +68,9 @@ private final class KeyRecorder {
         }
         monitor = nil
         onRecord = nil
-        if isRecording { isRecording = false }
+        guard isRecording else { return }
+        isRecording = false
+        onRecordingChange(false)
     }
 
     private func handle(_ press: KeyPress) -> Bool {

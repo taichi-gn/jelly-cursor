@@ -19,10 +19,11 @@ struct SettingsView: View {
     let state: AppState
     let actions: AppActions
     @Bindable var navigation: SettingsNavigation
+    let recorder: KeyRecorder
 
     var body: some View {
         TabView(selection: $navigation.tab) {
-            GeneralPane(settings: settings, state: state, actions: actions)
+            GeneralPane(settings: settings, state: state, actions: actions, recorder: recorder)
                 .tabItem { Label("一般", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             MotionPane(settings: settings)
@@ -47,6 +48,7 @@ private struct GeneralPane: View {
     @Bindable var settings: AppSettings
     let state: AppState
     let actions: AppActions
+    let recorder: KeyRecorder
     @State private var loginItem = LoginItem()
     @State private var confirmsReset = false
 
@@ -88,12 +90,12 @@ private struct GeneralPane: View {
 
             Section("ショートカット") {
                 LabeledContent("オン・オフの切り替え") {
-                    ShortcutRecorder(combo: $settings.values.shortcut, onRecordingChange: actions.suspendShortcut)
+                    ShortcutRecorder(combo: $settings.values.shortcut, recorder: recorder)
                 }
                 if state.shortcutFailed {
                     Note("このショートカットはほかのアプリが使っているため登録できませんでした", color: .red)
                 } else {
-                    Note("どのアプリを使っているときでも効きます。⌘・⌃・⌥のどれかと組み合わせてください")
+                    Note("どのアプリを使っているときでも効きます。⌘か⌃と組み合わせてください（ファンクションキーは単独でも使えます）")
                 }
             }
 

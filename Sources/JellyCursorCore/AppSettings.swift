@@ -16,6 +16,9 @@ package struct CursorKinds: Codable, Equatable, Sendable {
         pointingHand = (try? c.decode(Bool.self, forKey: .pointingHand)) ?? true
     }
 
+    // どれか1つでも自前で描くか。すべてオフなら、描くものが無いので止める
+    package var drawsAny: Bool { arrow || iBeam || pointingHand }
+
     package func contains(_ kind: CursorKind) -> Bool {
         switch kind {
         case .arrow: arrow

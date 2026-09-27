@@ -42,6 +42,7 @@ import Testing
         for reason in expected {
             #expect(Activity(settings: settings, conditions: c, safeMode: false) == .paused(reason))
             switch reason {
+            case .noCursorKinds: break
             case .sessionInactive: c.sessionActive = true
             case .screenLocked: c.screenLocked = false
             case .screenSaver: c.screenSaverRunning = false
@@ -53,6 +54,17 @@ import Testing
             }
         }
         #expect(Activity(settings: settings, conditions: c, safeMode: false) == .running)
+    }
+
+    @Test func allCursorKindsOffPauses() {
+        var s = SettingsValues()
+        s.cursorKinds.arrow = false
+        s.cursorKinds.iBeam = false
+        #expect(Activity(settings: s, conditions: SystemConditions(), safeMode: false) == .running)
+        s.cursorKinds.pointingHand = false
+        #expect(Activity(settings: s, conditions: SystemConditions(), safeMode: false) == .paused(.noCursorKinds))
+        // オフとセーフモードのほうが先
+        #expect(Activity(settings: s, conditions: SystemConditions(), safeMode: true) == .safeMode)
     }
 
     @Test func settingsTurnOffAutomaticPauses() {

@@ -46,7 +46,6 @@ package final class AppController: NSObject, NSApplicationDelegate {
         settings.onChange = { [weak self] old in self?.settingsChanged(from: old) }
         system.onChange = { [weak self] in self?.update() }
         system.onNeedsRebuild = { [weak self] in self?.engine?.restart() }
-        system.watchesFullScreen = settings.values.pauseInFullScreen
         system.start()
         registerShortcut()
         update()
@@ -72,6 +71,8 @@ package final class AppController: NSObject, NSApplicationDelegate {
     // 設定と Mac の状態から、描くかどうかを決め直す
     private func update() {
         guard let engine else { return }
+        // 全画面かどうかは窓の一覧を1秒ごとに調べるので、使う設定のときだけ見る
+        system.watchesFullScreen = settings.values.pauseInFullScreen && state.isEnabled(in: settings)
         let activity = Activity(settings: settings.values, conditions: system.conditions, safeMode: state.safeMode)
         if activity.isRunning {
             engine.start()
@@ -90,7 +91,6 @@ package final class AppController: NSObject, NSApplicationDelegate {
         if new.showsMenuBarIcon != old.showsMenuBarIcon {
             statusMenu?.isVisible = new.showsMenuBarIcon || state.safeMode
         }
-        system.watchesFullScreen = new.pauseInFullScreen
         update()
     }
 

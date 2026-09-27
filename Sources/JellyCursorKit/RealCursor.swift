@@ -35,13 +35,24 @@ enum RealCursor {
     }
 
     // 本物のカーソルが見えなくなったときの逃げ道。自分が隠した回数の数え違いがあっても見えるよう、見えるまで重ねて戻す。
+    // 戻したことは少し遅れて反映されるので、1回ごとに少し待って確かめる。
     // 他のアプリが隠している分（動画の再生中など）は戻せないので、回数に上限を設ける
     static func forceShow() {
         show()
         guard let isVisible else { return }
-        for _ in 0..<8 where isVisible() == 0 {
+        for _ in 0..<8 {
+            if waitUntilVisible(isVisible) { return }
             CGDisplayShowCursor(CGMainDisplayID())
         }
+    }
+
+    private static func waitUntilVisible(_ isVisible: Int32Getter) -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + Tuning.Render.otherHideProbeTimeout
+        repeat {
+            if isVisible() != 0 { return true }
+            usleep(50)
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        return false
     }
 
     // 動画の再生中や文字入力中に、他のアプリが本物のカーソルを隠しているか。

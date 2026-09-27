@@ -21,9 +21,10 @@ package struct KeyCombo: Codable, Equatable, Hashable, Sendable {
     // メニューと同じ ⌃⌥⇧⌘ の順
     package var displayString: String { modifiers.symbols + keyLabel }
 
-    // 文字入力とぶつからないよう、⌘・⌃・⌥のどれかを含むか、ファンクションキーであること
+    // 文字入力とぶつからないよう、⌘か⌃を含むか、ファンクションキーであること。
+    // ⌥だけ（⌥⇧も）の組み合わせは é や © などの文字を打つのに使うので、どのアプリでも効くショートカットにはしない
     package var isValid: Bool {
-        !modifiers.isDisjoint(with: [.command, .control, .option]) || Self.functionKeys[keyCode] != nil
+        !modifiers.isDisjoint(with: [.command, .control]) || Self.functionKeys[keyCode] != nil
     }
 
     // RegisterEventHotKey に渡す修飾キー（cmdKey・shiftKey・optionKey・controlKey）

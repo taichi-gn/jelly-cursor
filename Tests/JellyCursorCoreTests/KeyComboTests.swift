@@ -20,7 +20,10 @@ import Testing
     @Test func validity() {
         #expect(!KeyCombo(keyCode: 0x26, modifiers: [], characters: "j").isValid)
         #expect(!KeyCombo(keyCode: 0x26, modifiers: .shift, characters: "j").isValid)
-        #expect(KeyCombo(keyCode: 0x26, modifiers: .option, characters: "j").isValid)
+        #expect(!KeyCombo(keyCode: 0x26, modifiers: .option, characters: "j").isValid)
+        #expect(!KeyCombo(keyCode: 0x26, modifiers: [.option, .shift], characters: "j").isValid)
+        #expect(KeyCombo(keyCode: 0x26, modifiers: [.option, .command], characters: "j").isValid)
+        #expect(KeyCombo(keyCode: 0x26, modifiers: .control, characters: "j").isValid)
         // ファンクションキーは修飾キーなしでもよい
         #expect(KeyCombo(keyCode: 0x60, modifiers: [], characters: nil).isValid)
     }
