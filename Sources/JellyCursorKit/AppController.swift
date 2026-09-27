@@ -51,6 +51,10 @@ package final class AppController: NSObject, NSApplicationDelegate {
         update()
         // アイコンを隠していると、セーフモードで起動したことに気づけないので設定画面を開く
         if state.safeMode && !settings.values.showsMenuBarIcon { openSettings() }
+        // 起動時に -OpenSettings <タブ> を渡すと、そのタブで設定画面を開く（open JellyCursor.app --args -OpenSettings motion）
+        if let name = UserDefaults.standard.string(forKey: "OpenSettings") {
+            openSettings(tab: SettingsTab(rawValue: name))
+        }
     }
 
     package func applicationWillTerminate(_ notification: Notification) {
@@ -112,8 +116,8 @@ package final class AppController: NSObject, NSApplicationDelegate {
         RealCursor.forceShow()
     }
 
-    private func openSettings() {
-        settingsWindow.show()
+    private func openSettings(tab: SettingsTab? = nil) {
+        settingsWindow.show(tab: tab)
     }
 
     @objc private func openSettingsFromMenu(_ sender: Any?) {

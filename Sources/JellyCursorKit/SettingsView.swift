@@ -3,23 +3,40 @@ import JellyCursorCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum SettingsTab: String, CaseIterable {
+    case general, motion, cursors, autoPause, about
+}
+
+// 設定画面で今開いているタブ。窓の外（起動時の指定など）からも切り替えられるようにする
+@MainActor
+@Observable
+final class SettingsNavigation {
+    var tab = SettingsTab.general
+}
+
 struct SettingsView: View {
     @Bindable var settings: AppSettings
     let state: AppState
     let actions: AppActions
+    @Bindable var navigation: SettingsNavigation
 
     var body: some View {
-        TabView {
+        TabView(selection: $navigation.tab) {
             GeneralPane(settings: settings, state: state, actions: actions)
                 .tabItem { Label("一般", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
             MotionPane(settings: settings)
                 .tabItem { Label("動き", systemImage: "wand.and.rays") }
+                .tag(SettingsTab.motion)
             CursorsPane(settings: settings)
                 .tabItem { Label("カーソル", systemImage: "cursorarrow") }
+                .tag(SettingsTab.cursors)
             AutoPausePane(settings: settings)
                 .tabItem { Label("自動で止める", systemImage: "pause.circle") }
+                .tag(SettingsTab.autoPause)
             AboutPane(state: state)
                 .tabItem { Label("情報", systemImage: "info.circle") }
+                .tag(SettingsTab.about)
         }
         .frame(width: 560, height: 520)
     }

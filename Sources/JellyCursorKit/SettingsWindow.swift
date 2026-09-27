@@ -9,6 +9,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let settings: AppSettings
     private let state: AppState
     private let actions: AppActions
+    private let navigation = SettingsNavigation()
     private var window: NSWindow?
 
     init(settings: AppSettings, state: AppState, actions: AppActions) {
@@ -18,7 +19,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     // メニューバーだけのアプリ（.accessory）のままだと前面に出せないので、開いている間だけふつうのアプリにする
-    func show() {
+    func show(tab: SettingsTab? = nil) {
+        if let tab { navigation.tab = tab }
         let window = self.window ?? makeWindow()
         self.window = window
         NSApp.setActivationPolicy(.regular)
@@ -31,7 +33,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let view = SettingsView(settings: settings, state: state, actions: actions)
+        let view = SettingsView(settings: settings, state: state, actions: actions, navigation: navigation)
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.title = "JellyCursor の設定"
         window.styleMask = [.titled, .closable, .miniaturizable]

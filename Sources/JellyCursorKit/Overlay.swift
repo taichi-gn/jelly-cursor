@@ -130,6 +130,8 @@ final class Overlay {
         // 許可ダイアログなどのシステムの窓より手前に出すため、カーソル専用の層に置く
         w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.cursorWindow)))
         w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // 設定画面を開いている間に JellyCursor を隠しても（⌘H など）、カーソルの絵は隠さない
+        w.canHide = false
         // 描くだけの窓なので、VoiceOver などに見せない
         w.setAccessibilityElement(false)
 
