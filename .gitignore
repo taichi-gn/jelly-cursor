@@ -1,2 +1,4 @@
 JellyCursor.app/
+.build/
+.swiftpm/
 .DS_Store

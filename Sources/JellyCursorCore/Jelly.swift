@@ -1,24 +1,25 @@
-import CoreGraphics
 import Foundation
 
-final class Jelly: CursorFigure {
+package final class Jelly: CursorFigure {
     private let shape: ArrowShape
-    private(set) var points: [CGPoint]
+    package private(set) var points: [CGPoint]
     private var trail = Trail()
     private var heading: Heading
     private var length: CGFloat
     private var lastMouse = CGPoint.zero
     private var started = false
-    private(set) var isSettled = false
+    package private(set) var isSettled = false
+    private let stretchScale: CGFloat
 
-    init(scale: CGFloat = ArrowShape.systemPointerScale()) {
+    package init(scale: CGFloat, motion: MotionParameters = .standard) {
         shape = ArrowShape(scale: scale)
-        heading = Heading(restAngle: shape.baseAngle)
+        heading = Heading(restAngle: shape.baseAngle, motion: motion)
+        stretchScale = motion.stretch
         length = shape.length
         points = Array(repeating: .zero, count: shape.vertices.count)
     }
 
-    func step(to mouse: CGPoint, dt: CGFloat) {
+    package func step(to mouse: CGPoint, dt: CGFloat) {
         if !started {
             started = true
         } else if dt > 0 {
@@ -27,7 +28,7 @@ final class Jelly: CursorFigure {
         lastMouse = mouse
         trail.record(mouse, dt: dt)
 
-        let target = shape.length + min(trail.length, Tuning.Trail.maxStretch) * heading.commitment
+        let target = shape.length + min(trail.length, Tuning.Trail.maxStretch) * stretchScale * heading.commitment
         if dt > 0 {
             length += (target - length) * (1 - exp(-dt / Tuning.Trail.lengthSmoothing))
         }
@@ -54,7 +55,7 @@ final class Jelly: CursorFigure {
         }
     }
 
-    var borderWidth: CGFloat { shape.borderWidth }
+    package var borderWidth: CGFloat { shape.borderWidth }
 }
 
 // 矢印の芯。先端から s px 後ろの位置を返す。

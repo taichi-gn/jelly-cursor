@@ -1,69 +1,55 @@
-import AppKit
+import Foundation
 
-// リンクの上の指。本物の指カーソルの画像を、指先（クリック位置）を軸に回して伸ばす。
-// 指の形は複雑で配色も矢印と逆なので、輪郭を描き直さず画像をそのまま使う
-final class PointingHand: ImageFigure {
-    private(set) var image: CGImage?
-    private(set) var size = CGSize.zero
-    private(set) var anchor = CGPoint(x: 0.5, y: 0.5)
-    private(set) var position = CGPoint.zero
-    private(set) var isSettled = true
+// リンクの上の指の向きと伸び。画像を回して描く部分は JellyCursorKit の PointingHand にある
+package struct HandMotion {
+    // 指差す向き（ラジアン）。上向きが π/2
+    package private(set) var angle: CGFloat = .pi / 2
+    package private(set) var isSettled = true
+    package var stretch: CGFloat { stretchSpring.value }
 
-    private let scale: CGFloat
     // 指は上を向いている
-    private var heading = Heading(restAngle: .pi / 2)
+    private var heading: Heading
     private var trail = Trail()
     // 道の向きを測る区間。矢印の胴体と同じ長さにして、矢印と指で向きをそろえる
     private let pathSpan: CGFloat
-    private var angle: CGFloat = .pi / 2
     private var lastTurn: CGFloat = 0
-    private var stretch = SpringValue(omega: Tuning.Hand.omega, dampingRatio: Tuning.Hand.dampingRatio)
+    private var stretchSpring: SpringValue
+    private let maxStretch: CGFloat
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
 
-    init(scale: CGFloat = ArrowShape.systemPointerScale()) {
-        self.scale = scale
+    package init(scale: CGFloat, motion: MotionParameters = .standard) {
+        heading = Heading(restAngle: .pi / 2, motion: motion)
         pathSpan = ArrowShape(scale: scale).length
-        use(.pointingHand)
+        stretchSpring = SpringValue(omega: Tuning.Hand.omega, dampingRatio: motion.handDampingRatio)
+        maxStretch = Tuning.Hand.maxStretch * motion.stretch
     }
 
-    // ポインタの色の設定などで見た目が変わるので、実際に出ている指カーソルの画像に差し替える
-    func use(_ cursor: NSCursor) {
-        let imageSize = cursor.image.size
-        guard imageSize.width > 0, imageSize.height > 0 else { return }
-        var rect = CGRect(x: 0, y: 0, width: imageSize.width * 4, height: imageSize.height * 4)
-        image = cursor.image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
-        size = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        // ホットスポットは左上から、アンカーは左下から数える
-        anchor = CGPoint(x: cursor.hotSpot.x / imageSize.width, y: 1 - cursor.hotSpot.y / imageSize.height)
-    }
-
-    func step(to mouse: CGPoint, dt: CGFloat) {
+    // imageHeight は描く画像の高さ。伸びのずれをピクセルに直して、落ち着いたかを決めるのに使う
+    package mutating func step(to mouse: CGPoint, dt: CGFloat, imageHeight: CGFloat) {
         if let lastMouse, dt > 0 {
             heading.turn(from: lastMouse, to: mouse, dt: dt)
             let k = 1 - exp(-Tuning.Hand.velocitySmoothing * dt)
             smoothedVel.dx += ((mouse.x - lastMouse.x) / dt - smoothedVel.dx) * k
             smoothedVel.dy += ((mouse.y - lastMouse.y) / dt - smoothedVel.dy) * k
             let speed = hypot(smoothedVel.dx, smoothedVel.dy)
-            stretch.step(toward: Tuning.Hand.maxStretch * tanh(speed / Tuning.Hand.stretchSpeed) * heading.commitment,
-                         dt: dt)
+            stretchSpring.step(toward: maxStretch * tanh(speed / Tuning.Hand.stretchSpeed) * heading.commitment, dt: dt)
         }
         lastMouse = mouse
         trail.record(mouse, dt: dt)
-        position = mouse
         // 道の向きは手ぶれで毎フレーム少しずつ揺れるので、ならしてから向ける。
         // 速く動かし始めたときなどに、指が1フレームで大きく回って飛んだように見えないよう、回る速さに上限を設ける
         let smoothed = wrapAngle(pathAngle(at: mouse) - angle) * (1 - exp(-dt / Tuning.Hand.angleSmoothing))
         let maxTurn = Tuning.Hand.maxTurnRate * dt
         angle = wrapAngle(angle + min(max(smoothed, -maxTurn), maxTurn))
         let lag = abs(wrapAngle(heading.angle - angle)) * Tuning.Turn.armLength
-        isSettled = max(heading.restError, stretch.restError * size.height, trail.length, lag) < Tuning.Settle.threshold
+        isSettled = max(heading.restError, stretchSpring.restError * imageHeight, trail.length, lag) < Tuning.Settle.threshold
     }
 
     // 矢印の胴体と同じく、動いている間は実際に通った道の向きを指す。
     // 道が短いときや少し動かしただけのときは、ばねで回る向きに寄せる。
     // 折り返した道（道のりに比べて先端と後ろの点が近い）では、道の向きが一瞬で裏返るので、ばねの向きに寄せる
-    private func pathAngle(at mouse: CGPoint) -> CGFloat {
+    private mutating func pathAngle(at mouse: CGPoint) -> CGFloat {
         let span = min(trail.length, pathSpan)
         let behind = trail.point(at: span)
         let d = hypot(mouse.x - behind.x, mouse.y - behind.y)
@@ -81,12 +67,5 @@ final class PointingHand: ImageFigure {
         lastTurn = turn
         let blend = min(trail.length / pathSpan, 1) * heading.commitment * (d / span)
         return heading.angle + turn * blend
-    }
-
-    // 画像の上方向（指の向き）に伸ばしてから、動かした方向へ回す
-    var transform: CATransform3D {
-        let s = 1 + stretch.value
-        let stretched = CATransform3DMakeScale(1 / sqrt(s), s, 1)
-        return CATransform3DConcat(stretched, CATransform3DMakeRotation(angle - .pi / 2, 0, 0, 1))
     }
 }

@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 動きの計算と設定のロジック（JellyCursorCore）の試験。安い Linux で先に回す
+  core-linux:
+    runs-on: ubuntu-latest
+    container: swift:6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -Xswiftc -warnings-as-errors
+      - run: swift test
+
+  # アプリ全体（AppKit を使う部分を含む）のビルドと試験
+  macos:
+    needs: core-linux
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift build -Xswiftc -warnings-as-errors
+      - run: swift test
+      - run: make app SWIFT_FLAGS="-Xswiftc -warnings-as-errors"
+      - run: plutil -lint JellyCursor.app/Contents/Info.plist && codesign --verify --verbose JellyCursor.app

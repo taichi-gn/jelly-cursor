@@ -17,16 +17,17 @@ struct Heading {
     private var idleTime: CGFloat = 0
     private var travel: CGFloat = 0
     private var returnPhase = ReturnPhase.none
-    private let turnSpring = DampedSpring(omega: Tuning.Turn.omega, dampingRatio: Tuning.Turn.dampingRatio)
-    private let swingSpring = DampedSpring(omega: Tuning.Turn.returnOmega,
-                                           dampingRatio: Tuning.Turn.returnSwingDampingRatio)
+    private let turnSpring: DampedSpring
+    private let swingSpring: DampedSpring
     private let settleSpring = DampedSpring(omega: Tuning.Turn.returnOmega,
                                             dampingRatio: Tuning.Turn.returnSettleDampingRatio)
 
-    init(restAngle: CGFloat) {
+    init(restAngle: CGFloat, motion: MotionParameters = .standard) {
         self.restAngle = restAngle
         angle = restAngle
         targetAngle = restAngle
+        turnSpring = DampedSpring(omega: Tuning.Turn.omega, dampingRatio: motion.turnDampingRatio)
+        swingSpring = DampedSpring(omega: Tuning.Turn.returnOmega, dampingRatio: motion.returnSwingDampingRatio)
     }
 
     var axis: CGVector { CGVector(dx: cos(angle), dy: sin(angle)) }

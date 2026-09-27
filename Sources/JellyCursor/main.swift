@@ -1,4 +1,5 @@
 import AppKit
+import JellyCursorKit
 
 MainActor.assumeIsolated {
     let app = NSApplication.shared

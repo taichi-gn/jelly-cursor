@@ -1,7 +1,9 @@
 import AppKit
+import JellyCursorCore
 
 // 画面ごとの透明ウィンドウに、縁（影つき）と中身の2枚の図形の層と、画像の層を置き、形や向きだけを差し替える。
 // 画面全体を毎フレーム描き直すと、Retina では1枚33MBの描画領域を書き換えることになり重い
+@MainActor
 final class Overlay {
     private struct Surface {
         let window: NSWindow
@@ -87,9 +89,9 @@ final class Overlay {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for s in surfaces + spares {
-            s.border.fillColor = colors.outline
-            s.border.strokeColor = colors.outline
-            s.fill.fillColor = colors.fill
+            s.border.fillColor = colors.outline.cgColor
+            s.border.strokeColor = colors.outline.cgColor
+            s.fill.fillColor = colors.fill.cgColor
         }
         CATransaction.commit()
     }
@@ -135,8 +137,8 @@ final class Overlay {
         w.contentView = view
 
         let border = CAShapeLayer()
-        border.fillColor = colors.outline
-        border.strokeColor = colors.outline
+        border.fillColor = colors.outline.cgColor
+        border.strokeColor = colors.outline.cgColor
         border.lineJoin = .round
         border.shadowColor = NSColor.black.cgColor
         border.shadowOpacity = Tuning.Render.shadowOpacity
@@ -144,7 +146,7 @@ final class Overlay {
         border.shadowOffset = Tuning.Render.shadowOffset
 
         let fill = CAShapeLayer()
-        fill.fillColor = colors.fill
+        fill.fillColor = colors.fill.cgColor
 
         // 画像はカーソル本来の色と影を含むので、色の設定は当てない
         let picture = CALayer()

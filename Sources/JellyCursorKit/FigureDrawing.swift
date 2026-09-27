@@ -1,27 +1,7 @@
-import CoreGraphics
-import QuartzCore
-
-// 画面に描くカーソル。毎フレーム動かし、落ち着いたかを返す
-protocol Figure: AnyObject {
-    var isSettled: Bool { get }
-    func step(to mouse: CGPoint, dt: CGFloat)
-}
-
-// 輪郭を変形させて描くもの。矢印（Jelly）と I 字（IBeam）
-protocol CursorFigure: Figure {
-    var points: [CGPoint] { get }
-    var borderWidth: CGFloat { get }
-}
+import AppKit
+import JellyCursorCore
 
 extension CursorFigure {
-    var bounds: CGRect {
-        let xs = points.map(\.x), ys = points.map(\.y)
-        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else {
-            return .null
-        }
-        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-    }
-
     func path(offsetBy offset: CGVector) -> CGPath {
         let path = CGMutablePath()
         path.addLines(between: points.map { CGPoint(x: $0.x + offset.dx, y: $0.y + offset.dy) })
@@ -46,5 +26,27 @@ extension ImageFigure {
         CGRect(x: -anchor.x * size.width, y: -anchor.y * size.height, width: size.width, height: size.height)
             .applying(CATransform3DGetAffineTransform(transform))
             .offsetBy(dx: position.x, dy: position.y)
+    }
+}
+
+// カーソルの画像とクリック位置。NSCursor は主スレッドで読むので、読んだ結果をこの形で渡す
+struct CursorImage {
+    let image: CGImage?
+    // ポイント単位の大きさ
+    let size: CGSize
+    // 左上から数えたクリック位置
+    let hotSpot: CGPoint
+
+    @MainActor
+    init(_ cursor: NSCursor) {
+        size = cursor.image.size
+        hotSpot = cursor.hotSpot
+        guard size.width > 0, size.height > 0 else {
+            image = nil
+            return
+        }
+        // 大きく描いても粗くならないよう、4倍の解像度で取る
+        var rect = CGRect(x: 0, y: 0, width: size.width * 4, height: size.height * 4)
+        image = cursor.image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
 }

@@ -1,8 +1,7 @@
-import CoreGraphics
 import Foundation
 
 // 文字の上の I 字。変形はいつも中心（クリック位置）を基準にするので、文字を選ぶ位置はずれない
-final class IBeam: CursorFigure {
+package final class IBeam: CursorFigure {
     // macOS 標準の I 字（倍率1）の黒い中身の輪郭。NSCursor.iBeam の最高解像度の画像を4倍に拡大してから読み取った
     // （縦棒が細いので、そのままだと縁が内側に寄って1割ほど細くなる）。中心（ホットスポット）が原点で y は下向き
     private static let outline: [CGPoint] = [
@@ -28,20 +27,30 @@ final class IBeam: CursorFigure {
     }
 
     private let vertices: [Vertex]
-    private(set) var points: [CGPoint]
-    let borderWidth: CGFloat
-    private(set) var isSettled = true
+    package private(set) var points: [CGPoint]
+    package let borderWidth: CGFloat
+    package private(set) var isSettled = true
 
-    private var widen = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: Tuning.IBeam.dampingRatio)
-    private var stretch = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: Tuning.IBeam.dampingRatio)
-    private var lean = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: Tuning.IBeam.dampingRatio)
+    private var widen: SpringValue
+    private var stretch: SpringValue
+    private var lean: SpringValue
+    // 太り・伸び・傾きの最大値。設定の「伸び」を掛けたもの
+    private let maxWiden: CGFloat
+    private let maxStretch: CGFloat
+    private let maxLean: CGFloat
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
     private let height: CGFloat
     // 縦棒の中心線。クリック位置より少し左にあるので、ここを基準に広げて縦棒が横にずれないようにする
     private let stemCenterX: CGFloat
 
-    init(scale: CGFloat = ArrowShape.systemPointerScale()) {
+    package init(scale: CGFloat, motion: MotionParameters = .standard) {
+        widen = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
+        stretch = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
+        lean = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
+        maxWiden = Tuning.IBeam.maxWiden * motion.stretch
+        maxStretch = Tuning.IBeam.maxStretch * motion.stretch
+        maxLean = Tuning.IBeam.maxLean * motion.stretch
         vertices = Self.outline.map { p in
             let t = Self.smoothstep(Tuning.IBeam.stemHalfHeight, Tuning.IBeam.serifStart, abs(p.y))
             return Vertex(offset: CGVector(dx: p.x * scale, dy: -p.y * scale),
@@ -54,18 +63,18 @@ final class IBeam: CursorFigure {
         stemCenterX = ((stemXs.min() ?? 0) + (stemXs.max() ?? 0)) / 2 * scale
     }
 
-    func step(to mouse: CGPoint, dt: CGFloat) {
+    package func step(to mouse: CGPoint, dt: CGFloat) {
         if let lastMouse, dt > 0 {
             let k = 1 - exp(-Tuning.IBeam.velocitySmoothing * dt)
             smoothedVel.dx += ((mouse.x - lastMouse.x) / dt - smoothedVel.dx) * k
             smoothedVel.dy += ((mouse.y - lastMouse.y) / dt - smoothedVel.dy) * k
-            widen.step(toward: Tuning.IBeam.maxWiden * tanh(abs(smoothedVel.dx) / Tuning.IBeam.widenSpeed), dt: dt)
-            stretch.step(toward: Tuning.IBeam.maxStretch * tanh(abs(smoothedVel.dy) / Tuning.IBeam.stretchSpeed), dt: dt)
+            widen.step(toward: maxWiden * tanh(abs(smoothedVel.dx) / Tuning.IBeam.widenSpeed), dt: dt)
+            stretch.step(toward: maxStretch * tanh(abs(smoothedVel.dy) / Tuning.IBeam.stretchSpeed), dt: dt)
             // 動いた方向の線に沿うように傾ける。sin 2θ は右上・左下で正（/）、左上・右下で負（\）、
             // 真横・真上下で 0（傾けない）
             let speed = hypot(smoothedVel.dx, smoothedVel.dy)
             let diagonal = speed > 0 ? 2 * smoothedVel.dx * smoothedVel.dy / (speed * speed) : 0
-            lean.step(toward: Tuning.IBeam.maxLean * diagonal * tanh(speed / Tuning.IBeam.leanSpeed), dt: dt)
+            lean.step(toward: maxLean * diagonal * tanh(speed / Tuning.IBeam.leanSpeed), dt: dt)
         }
         lastMouse = mouse
         layOut(at: mouse)

@@ -23,7 +23,7 @@ struct ArrowShape {
     let length: CGFloat
     let borderWidth: CGFloat
 
-    init(scale: CGFloat = ArrowShape.systemPointerScale()) {
+    init(scale: CGFloat) {
         let offsets = Self.subdividedOffsets(scale: scale)
         let cx = offsets.map(\.dx).reduce(0, +) / CGFloat(offsets.count)
         let cy = offsets.map(\.dy).reduce(0, +) / CGFloat(offsets.count)
@@ -36,14 +36,6 @@ struct ArrowShape {
         }
         length = vertices.map(\.axial).max() ?? 1
         borderWidth = Tuning.Arrow.borderWidth * scale
-    }
-
-    // システム設定の「ポインタの大きさ」。動作中に変えたときも読めるよう、設定サーバーから読み直す（毎フレームは呼ばない）
-    static func systemPointerScale() -> CGFloat {
-        let domain = "com.apple.universalaccess" as CFString
-        CFPreferencesAppSynchronize(domain)
-        let value = (CFPreferencesCopyAppValue("mouseDriverCursorSize" as CFString, domain) as? NSNumber)?.doubleValue ?? 0
-        return value >= 1 ? min(CGFloat(value), 4) : 1
     }
 
     // 辺を細かく区切り、曲げたときに折れ線の角が目立たないようにする

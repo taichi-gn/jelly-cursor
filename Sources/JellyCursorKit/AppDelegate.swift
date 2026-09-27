@@ -1,10 +1,11 @@
 import AppKit
+import JellyCursorCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var arrow = Jelly()
-    private var iBeam = IBeam()
-    private var hand = PointingHand()
+package final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var arrow: Jelly
+    private var iBeam: IBeam
+    private var hand: PointingHand
     private var figures: [Figure] { [arrow, iBeam, hand] }
     private let overlay = Overlay()
     private let cover = CoverWatch()
@@ -23,14 +24,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var signalSources: [DispatchSourceSignal] = []
     private var canHideCursor = false
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    // 大きさは start で読み直して作り直す
+    package override init() {
+        arrow = Jelly(scale: 1)
+        iBeam = IBeam(scale: 1)
+        hand = PointingHand(scale: 1, motion: .standard, cursor: CursorImage(.pointingHand))
+        super.init()
+    }
+
+    package func applicationDidFinishLaunching(_ notification: Notification) {
         canHideCursor = RealCursor.allowBackgroundControl()
         setUpStatusItem()
         setUpSignalHandlers()
         start()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    package func applicationWillTerminate(_ notification: Notification) {
         RealCursor.show()
     }
 
@@ -38,8 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isRunning = true
         let mouse = NSEvent.mouseLocation
         let now = ProcessInfo.processInfo.systemUptime
-        rebuildFigures(scale: ArrowShape.systemPointerScale(), at: mouse)
-        overlay.colors = PointerColors.current()
+        rebuildFigures(scale: SystemPointer.scale(), at: mouse)
+        overlay.colors = SystemPointer.colors()
         lastColorCheck = now
         overlay.activate()
         cursorShape = CursorShapeWatch()
@@ -67,8 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cover.pointerScale = scale
         arrow = Jelly(scale: scale)
         iBeam = IBeam(scale: scale)
-        hand = PointingHand(scale: scale)
-        if cursorShape.kind == .pointingHand, let cursor = cursorShape.cursor { hand.use(cursor) }
+        let handCursor = cursorShape.kind == .pointingHand ? cursorShape.cursor ?? .pointingHand : .pointingHand
+        hand = PointingHand(scale: scale, motion: .standard, cursor: CursorImage(handCursor))
         figures.forEach { $0.step(to: mouse, dt: 0) }
     }
 
@@ -94,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchTyping(mouse: mouse)
         // 眠っている間は描き直しが走らないので、指の画像を差し替えたらここで描く
         if cursorShape.update(), cursorShape.kind == .pointingHand, let cursor = cursorShape.cursor {
-            hand.use(cursor)
+            hand.use(CursorImage(cursor))
             overlay.render()
         }
         let covered = cover.covers(mouse)
@@ -121,13 +130,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = ProcessInfo.processInfo.systemUptime
         guard now - lastColorCheck >= Tuning.Render.colorCheckInterval else { return }
         lastColorCheck = now
-        DispatchQueue.global(qos: .utility).async {
-            let colors = PointerColors.current()
-            let scale = ArrowShape.systemPointerScale()
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.isRunning else { return }
-                self.overlay.colors = colors
-                if scale != self.pointerScale { self.rebuildFigures(scale: scale, at: NSEvent.mouseLocation) }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let colors = SystemPointer.colors()
+            let scale = SystemPointer.scale()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.isRunning else { return }
+                    self.overlay.colors = colors
+                    if scale != self.pointerScale { self.rebuildFigures(scale: scale, at: NSEvent.mouseLocation) }
+                }
             }
         }
     }
@@ -182,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
             source.setEventHandler {
-                RealCursor.show()
+                MainActor.assumeIsolated { RealCursor.show() }
                 exit(0)
             }
             source.resume()

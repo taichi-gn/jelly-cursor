@@ -1,4 +1,5 @@
 import AppKit
+import JellyCursorCore
 
 // マウスがある画面の書き換えに合わせて onFrame を呼ぶ。onFrame が true を返したら浅く眠る。
 // 眠っている間は表示リンクを止め、タイマーでマウス位置だけを見て、動いたらすぐ起きる。

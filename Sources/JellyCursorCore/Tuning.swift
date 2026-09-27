@@ -1,8 +1,8 @@
 import Foundation
-import QuartzCore
 
-enum Tuning {
-    // 大きさはシステム設定の「ポインタの大きさ」に合わせる（ArrowShape.systemPointerScale）
+// 動きの標準の値。設定の「伸び」「弾み」で変わる値は、MotionParameters がここから作る
+package enum Tuning {
+    // 大きさはシステム設定の「ポインタの大きさ」に合わせる（JellyCursorKit の SystemPointer.scale）
     enum Arrow {
         static let vertexSpacing: CGFloat = 1.0
         // 標準の矢印の白い縁の太さ（倍率1のとき）
@@ -90,30 +90,30 @@ enum Tuning {
         static let velocityWeight: CGFloat = 0.02
     }
 
-    enum Render {
-        static let maxFrameStep: TimeInterval = 1.0 / 30
+    package enum Render {
+        package static let maxFrameStep: TimeInterval = 1.0 / 30
         // 眠っている間にマウス位置を見る間隔（秒）。動き出しの遅れは最大でこの1回分
-        static let idlePollInterval: TimeInterval = 1.0 / 60
+        package static let idlePollInterval: TimeInterval = 1.0 / 60
         // 隠し直しが効かず本物に任せたあと、隠れた状態がこの回数続いたら自前の絵に戻す
         // （動いている間の120Hzで約0.1秒、眠っている間の30〜60Hzで0.2〜0.4秒）
-        static let overpowerRecoverChecks = 12
+        package static let overpowerRecoverChecks = 12
         // 他のアプリが本物のカーソルを隠しているかを調べるのは、マウスがこの秒数止まってから、この間隔ごと。
         // 調べる瞬間に本物が映っても重なるよう、矢印が元の形に戻りきってから調べる
-        static let otherHideDelay: TimeInterval = 1
-        static let otherHideInterval: TimeInterval = 0.5
-        static let otherHideRecheckInterval: TimeInterval = 2
-        static let otherHideInputSettle: TimeInterval = 0.3
+        package static let otherHideDelay: TimeInterval = 1
+        package static let otherHideInterval: TimeInterval = 0.5
+        package static let otherHideRecheckInterval: TimeInterval = 2
+        package static let otherHideInputSettle: TimeInterval = 0.3
         // 自分の分を戻してから、この秒数見えなければ他のアプリが隠していると判断する。
         // 他のアプリが隠している間は、調べるたびにこの秒数だけ待つ
-        static let otherHideProbeTimeout: TimeInterval = 0.01
+        package static let otherHideProbeTimeout: TimeInterval = 0.01
         // システム設定のポインタの色と大きさを読み直す間隔（秒）
-        static let colorCheckInterval: TimeInterval = 1
+        package static let colorCheckInterval: TimeInterval = 1
         // JellyCursor の窓より手前にある窓（システムのダイアログなど）を調べる間隔（秒）
-        static let coverCheckInterval: TimeInterval = 0.1
+        package static let coverCheckInterval: TimeInterval = 0.1
         // 手前の窓のうち、縦横ともこの大きさ（倍率1のとき、pt）以下のものは数えない（本物のカーソルが窓として出ることがあるため）
-        static let coverIgnoreSize: CGFloat = 48
-        static let shadowOpacity: Float = 0.35
-        static let shadowRadius: CGFloat = 1.5
-        static let shadowOffset = CGSize(width: 0, height: -1.5)
+        package static let coverIgnoreSize: CGFloat = 48
+        package static let shadowOpacity: Float = 0.35
+        package static let shadowRadius: CGFloat = 1.5
+        package static let shadowOffset = CGSize(width: 0, height: -1.5)
     }
 }
