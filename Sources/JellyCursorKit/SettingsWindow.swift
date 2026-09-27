@@ -34,11 +34,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private func makeWindow() -> NSWindow {
         let view = SettingsView(settings: settings, state: state, actions: actions, navigation: navigation)
-        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        let controller = NSHostingController(rootView: view)
+        let window = NSWindow(contentViewController: controller)
         window.title = "JellyCursor の設定"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.delegate = self
+        // 中身の大きさが決まってから真ん中に置く。先に置くと、あとで広がったぶん画面の右や上にはみ出す
+        window.setContentSize(controller.view.fittingSize)
         window.center()
         return window
     }
