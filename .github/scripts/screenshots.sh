@@ -25,6 +25,9 @@ quit() {
     sleep 1
 }
 
+# 設定は初期状態から始める
+defaults delete local.jellycursor 2>/dev/null || true
+
 for tab in general motion cursors autoPause about; do
     launch -OpenSettings "$tab"
     bounds=$("$TOOLS/window-bounds" JellyCursor)
@@ -33,7 +36,10 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
-# 円を描いて速く動かしている間と、止めた直後（戻る揺れ）の矢印
+# 円を描いて速く動かしている間と、止めた直後（戻る揺れ）の矢印。
+# CI の Mac は「視差効果を減らす」がオンで、初期設定では止まるので、その設定だけ外して撮る
+settings='{"pauseWhenReduceMotion": false, "pauseOnLowPower": false}'
+defaults write local.jellycursor settings -data "$(printf '%s' "$settings" | xxd -p | tr -d '\n')"
 launch
 "$TOOLS/diagnose" JellyCursor
 "$TOOLS/move-mouse" 600 400 150 2.0 &
