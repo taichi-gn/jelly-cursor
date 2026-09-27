@@ -8,6 +8,7 @@ TOOLS="$PWD/.build/ci-tools"
 mkdir -p "$OUT" "$TOOLS"
 swiftc -O .github/scripts/window-bounds.swift -o "$TOOLS/window-bounds"
 swiftc -O .github/scripts/move-mouse.swift -o "$TOOLS/move-mouse"
+swiftc -O .github/scripts/diagnose.swift -o "$TOOLS/diagnose"
 
 launch() {
     open -n "$APP" --args "$@"
@@ -34,6 +35,7 @@ done
 
 # 円を描いて速く動かしている間と、止めた直後（戻る揺れ）の矢印
 launch
+"$TOOLS/diagnose" JellyCursor
 "$TOOLS/move-mouse" 600 400 150 2.0 &
 mover=$!
 sleep 1.2
@@ -41,6 +43,7 @@ screencapture -x -R"380,180,440,440" "$OUT/moving.png"
 wait "$mover"
 sleep 0.12
 screencapture -x -R"380,180,440,440" "$OUT/stopping.png"
+"$TOOLS/diagnose" JellyCursor
 quit
 
 if ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i jellycursor; then
@@ -48,3 +51,12 @@ if ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i jellycursor; then
     exit 1
 fi
 ls -la "$OUT"
+
+# 成果物を取り出せない環境でも見られるよう、縮めた JPEG を base64 でログにも出す
+for png in "$OUT"/*.png; do
+    jpg="${png%.png}.jpg"
+    sips -s format jpeg -s formatOptions 70 "$png" --out "$jpg" >/dev/null
+    echo "BEGIN-IMAGE $(basename "$jpg")"
+    base64 -b 100 -i "$jpg"
+    echo "END-IMAGE"
+done
