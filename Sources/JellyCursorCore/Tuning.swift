@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 動きの標準の値。設定の「伸び」「弾み」で変わる値は、MotionParameters がここから作る
 package enum Tuning {

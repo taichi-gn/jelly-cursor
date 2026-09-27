@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 struct ArrowShape {
     // 矢印の軸に沿った座標。axial は先端から後ろへの距離、lateral は軸から左への距離

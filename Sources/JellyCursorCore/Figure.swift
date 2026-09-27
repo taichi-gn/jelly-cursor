@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 画面に描くカーソル。毎フレーム動かし、落ち着いたかを返す
 package protocol Figure: AnyObject {

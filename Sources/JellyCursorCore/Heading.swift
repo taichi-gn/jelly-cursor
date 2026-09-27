@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 struct Heading {
     // 元の向きへの戻り方。弾むばねで戻り、1回行き過ぎて折り返したら、弾まないばねに切り替える

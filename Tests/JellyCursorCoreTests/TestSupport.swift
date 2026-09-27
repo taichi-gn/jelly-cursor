@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 @testable import JellyCursorCore
 
 // 120Hz で直線に動かしてから止める。止めたあとのフレーム数も指定する

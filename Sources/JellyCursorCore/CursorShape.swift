@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 package enum CursorKind: Sendable {
     case arrow, iBeam, pointingHand, other

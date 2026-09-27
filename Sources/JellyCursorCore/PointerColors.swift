@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 色の成分（sRGB、0〜1）
 package struct RGBA: Equatable, Sendable {

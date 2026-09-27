@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 func wrapAngle(_ a: CGFloat) -> CGFloat { atan2(sin(a), cos(a)) }
 

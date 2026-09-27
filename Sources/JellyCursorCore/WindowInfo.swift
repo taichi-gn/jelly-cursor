@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 画面に出ている窓1つの情報（CGWindowListCopyWindowInfo の1件）。bounds は窓の一覧と同じ左上原点の座標
 package struct WindowInfo: Equatable, Sendable {

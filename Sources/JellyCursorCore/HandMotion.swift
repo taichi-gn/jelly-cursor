@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // リンクの上の指の向きと伸び。画像を回して描く部分は JellyCursorKit の PointingHand にある
 package struct HandMotion {

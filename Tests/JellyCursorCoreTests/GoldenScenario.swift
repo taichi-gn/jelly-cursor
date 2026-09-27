@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 動きの記録に使う、決まったマウスの動き。フレームごとに (マウス位置, 前のフレームからの秒数) を返す
 enum GoldenScenario {

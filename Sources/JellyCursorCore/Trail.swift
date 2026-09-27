@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 直近のマウス位置を時刻つきで覚え、「先端から s px 後ろ」の位置を返す
 struct Trail {

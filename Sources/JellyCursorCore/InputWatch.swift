@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // macOS は文字を打つとマウスを動かすまでカーソルを消す。自前で描く I 字も同じように消すため、
 // 最後の文字入力が最後のマウス移動より新しいかを見る（キー入力の時刻は権限なしで取れる）。

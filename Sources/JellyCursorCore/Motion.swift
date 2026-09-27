@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 設定画面で選ぶ動きの強さ。どちらも 1 が標準（これまでの動き）で、0〜2 の範囲
 // - stretch（伸び）: 矢印と指の伸び、I 字の太り・伸び・傾きの大きさ。0 なら形を変えず向きだけ変える

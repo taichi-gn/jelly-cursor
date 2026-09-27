@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 package final class Jelly: CursorFigure {
     private let shape: ArrowShape

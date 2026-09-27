@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // 文字の上の I 字。変形はいつも中心（クリック位置）を基準にするので、文字を選ぶ位置はずれない
 package final class IBeam: CursorFigure {
