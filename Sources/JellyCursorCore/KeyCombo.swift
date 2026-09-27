@@ -36,10 +36,13 @@ package struct KeyCombo: Codable, Equatable, Hashable, Sendable {
         return flags
     }
 
-    // メニューの項目にキーとして付けられる1文字（小文字）。記号で表すキーは nil
+    // メニューの項目にキーとして付けられる1文字（小文字）。記号で表すキーは nil。
+    // ⇧と数字・記号の組み合わせは、記録した文字が⇧を押したあとの文字（1 なら !）になっていて、
+    // メニューでは ⇧⌘! のように⇧が二重に効いた表示になるので付けない
     package var menuKeyEquivalent: String? {
         guard Self.specialKeys[keyCode] == nil, Self.functionKeys[keyCode] == nil,
-              keyLabel.count == 1 else { return nil }
+              keyLabel.count == 1, let scalar = keyLabel.unicodeScalars.first else { return nil }
+        if modifiers.contains(.shift) && !CharacterSet.letters.contains(scalar) { return nil }
         return keyLabel.lowercased()
     }
 

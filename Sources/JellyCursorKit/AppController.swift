@@ -32,6 +32,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
                               cursorKinds: settings.values.cursorKinds)
         setUpSignalHandlers()
         NSApp.mainMenu = makeMainMenu()
+        NSApp.applicationIconImage = AppIconImage.make()
         statusMenu = StatusMenu(
             settings: settings, state: state, frontApp: { [weak self] in self?.system.lastOtherApp },
             actions: StatusMenu.Actions(

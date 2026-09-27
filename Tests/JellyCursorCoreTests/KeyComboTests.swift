@@ -32,6 +32,9 @@ import Testing
         #expect(KeyCombo.label(keyCode: 0x2C, characters: "/") == "/")
         #expect(KeyCombo.label(keyCode: 0x0B, characters: "") == "#11")
         #expect(KeyCombo(keyCode: 0x31, modifiers: .control, characters: " ").menuKeyEquivalent == nil)
+        #expect(KeyCombo(keyCode: 0x12, modifiers: [.command, .shift], characters: "!").menuKeyEquivalent == nil)
+        #expect(KeyCombo(keyCode: 0x12, modifiers: .command, characters: "1").menuKeyEquivalent == "1")
+        #expect(KeyCombo(keyCode: 0x26, modifiers: [.command, .shift], characters: "J").menuKeyEquivalent == "j")
     }
 
     @Test func codableRoundTrip() throws {
