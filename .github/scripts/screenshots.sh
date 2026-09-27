@@ -52,6 +52,13 @@ screencapture -x -R"380,180,440,440" "$OUT/stopping.png"
 "$TOOLS/diagnose" JellyCursor
 quit
 
+# killall（SIGTERM）で終わらせたあとは、本物のカーソルが見えていること
+"$TOOLS/diagnose" JellyCursor | tee "$TOOLS/after-quit.txt"
+if ! grep -q "cursor visible: true" "$TOOLS/after-quit.txt"; then
+    echo "終了したあとも本物のカーソルが見えていない"
+    exit 1
+fi
+
 if ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i jellycursor; then
     echo "クラッシュの記録がある"
     exit 1
