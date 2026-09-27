@@ -92,8 +92,8 @@ enum Tuning {
 
     enum Render {
         static let maxFrameStep: TimeInterval = 1.0 / 30
-        // 眠っている間にマウス位置を見る頻度。動き出しの遅れは最大でこの1フレーム分
-        static let idleFrameRate = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        // 眠っている間にマウス位置を見る間隔（秒）。動き出しの遅れは最大でこの1回分
+        static let idlePollInterval: TimeInterval = 1.0 / 60
         // 隠し直しが効かず本物に任せたあと、隠れた状態がこの回数続いたら自前の絵に戻す
         // （動いている間の120Hzで約0.1秒、眠っている間の30〜60Hzで0.2〜0.4秒）
         static let overpowerRecoverChecks = 12

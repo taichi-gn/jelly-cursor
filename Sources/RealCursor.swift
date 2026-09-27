@@ -40,11 +40,13 @@ enum RealCursor {
         CGDisplayShowCursor(CGMainDisplayID())
         let deadline = ProcessInfo.processInfo.systemUptime + Tuning.Render.otherHideProbeTimeout
         var hidden = true
+        // 休まずに確かめ続けると、待つ間ずっとCPUを使うので、合間に少し休む
         while ProcessInfo.processInfo.systemUptime < deadline {
             if isVisible() != 0 {
                 hidden = false
                 break
             }
+            usleep(50)
         }
         CGDisplayHideCursor(CGMainDisplayID())
         return hidden
