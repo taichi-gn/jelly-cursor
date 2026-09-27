@@ -1,8 +1,13 @@
 import AppKit
 import JellyCursorCore
 
+// 自前のカーソルを描く。start から stop までの間、マウスに合わせて毎フレーム動かし、本物のカーソルを出し入れする
 @MainActor
-package final class AppDelegate: NSObject, NSApplicationDelegate {
+final class CursorEngine {
+    private(set) var isRunning = false
+    private let canHideCursor: Bool
+    private var motion: MotionParameters
+    private var cursorKinds: CursorKinds
     private var arrow: Jelly
     private var iBeam: IBeam
     private var hand: PointingHand
@@ -18,32 +23,19 @@ package final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastMouse: CGPoint?
     private var pointerScale: CGFloat = 1
     private var lastColorCheck: TimeInterval = 0
-    private var isRunning = false
-    private var statusItem: NSStatusItem?
-    private var toggleItem: NSMenuItem?
-    private var signalSources: [DispatchSourceSignal] = []
-    private var canHideCursor = false
 
     // 大きさは start で読み直して作り直す
-    package override init() {
-        arrow = Jelly(scale: 1)
-        iBeam = IBeam(scale: 1)
-        hand = PointingHand(scale: 1, motion: .standard, cursor: CursorImage(.pointingHand))
-        super.init()
+    init(canHideCursor: Bool, motion: MotionParameters, cursorKinds: CursorKinds) {
+        self.canHideCursor = canHideCursor
+        self.motion = motion
+        self.cursorKinds = cursorKinds
+        arrow = Jelly(scale: 1, motion: motion)
+        iBeam = IBeam(scale: 1, motion: motion)
+        hand = PointingHand(scale: 1, motion: motion, cursor: CursorImage(.pointingHand))
     }
 
-    package func applicationDidFinishLaunching(_ notification: Notification) {
-        canHideCursor = RealCursor.allowBackgroundControl()
-        setUpStatusItem()
-        setUpSignalHandlers()
-        start()
-    }
-
-    package func applicationWillTerminate(_ notification: Notification) {
-        RealCursor.show()
-    }
-
-    private func start() {
+    func start() {
+        guard !isRunning else { return }
         isRunning = true
         let mouse = NSEvent.mouseLocation
         let now = ProcessInfo.processInfo.systemUptime
@@ -57,27 +49,47 @@ package final class AppDelegate: NSObject, NSApplicationDelegate {
         followCursorState(mouse: mouse)
         clock.start()
         cover.start { [unowned self] in self.overlay.windowNumbers }
-        toggleItem?.title = "ぐにゃぐにゃ: オン"
     }
 
-    private func stop() {
+    func stop() {
+        guard isRunning else { return }
         isRunning = false
         clock.stop()
         cover.stop()
         overlay.deactivate()
         RealCursor.show()
-        toggleItem?.title = "ぐにゃぐにゃ: オフ"
+    }
+
+    // スリープからの復帰や画面構成の変化のあと、窓・表示リンク・本物のカーソルの隠し方を作り直す
+    func restart() {
+        guard isRunning else { return }
+        stop()
+        start()
+    }
+
+    // 設定の「伸び」「弾み」を変えたら、その値で作り直す
+    func apply(motion: MotionParameters) {
+        guard motion != self.motion else { return }
+        self.motion = motion
+        if isRunning { rebuildFigures(scale: pointerScale, at: NSEvent.mouseLocation) }
+    }
+
+    // 自前で描くカーソルの種類を変えたら、今のカーソルに当てはめ直す
+    func apply(cursorKinds: CursorKinds) {
+        guard cursorKinds != self.cursorKinds else { return }
+        self.cursorKinds = cursorKinds
+        if isRunning { followCursorState(mouse: NSEvent.mouseLocation) }
     }
 
     // オンにしたときは、オフの間の移動を1フレームで動いたものとして伸ばさないよう、
-    // ポインタの大きさを変えたときは、その大きさで描くよう、作り直して今の位置に置く
+    // ポインタの大きさや動きの設定を変えたときは、その値で描くよう、作り直して今の位置に置く
     private func rebuildFigures(scale: CGFloat, at mouse: CGPoint) {
         pointerScale = scale
         cover.pointerScale = scale
-        arrow = Jelly(scale: scale)
-        iBeam = IBeam(scale: scale)
+        arrow = Jelly(scale: scale, motion: motion)
+        iBeam = IBeam(scale: scale, motion: motion)
         let handCursor = cursorShape.kind == .pointingHand ? cursorShape.cursor ?? .pointingHand : .pointingHand
-        hand = PointingHand(scale: scale, motion: .standard, cursor: CursorImage(handCursor))
+        hand = PointingHand(scale: scale, motion: motion, cursor: CursorImage(handCursor))
         figures.forEach { $0.step(to: mouse, dt: 0) }
     }
 
@@ -94,7 +106,7 @@ package final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // カーソルの種類と入力中かどうかで、描くものと本物の出し入れを決める。眠っている間も呼ぶ。
     // 次のときは自前の絵を消して本物に任せる:
-    // - リサイズなど、矢印・I 字・指以外のカーソル
+    // - リサイズなど、矢印・I 字・指以外のカーソルと、設定で描かないことにした種類
     // - システムのダイアログなど、JellyCursor の窓より手前にある窓の上（自前の絵がその奥に隠れる）
     // - 隠し直しても本物が消えない間（Dock が出ている間など。2つ見えないように）
     // 他のアプリが本物を隠している間（動画の放置・文字入力）は、自前の絵も消す
@@ -106,13 +118,14 @@ package final class AppDelegate: NSObject, NSApplicationDelegate {
             hand.use(CursorImage(cursor))
             overlay.render()
         }
+        let drawn = cursorKinds.contains(cursorShape.kind)
         let covered = cover.covers(mouse)
-        let hideReal = canHideCursor && cursorShape.kind != .other && !covered
+        let hideReal = canHideCursor && drawn && !covered
         if hideReal { RealCursor.hide() } else { RealCursor.show() }
         RealCursor.rehideIfShown()
         let now = ProcessInfo.processInfo.systemUptime
         otherHide.update(mouse: mouse, now: now, lastInput: now - Self.secondsSinceKeyOrClick()) { RealCursor.isHiddenByOthers() }
-        if RealCursor.isOverpowered || covered || otherHide.isHidden {
+        if !drawn || RealCursor.isOverpowered || covered || otherHide.isHidden {
             overlay.figure = nil
             return
         }
@@ -155,49 +168,5 @@ package final class AppDelegate: NSObject, NSApplicationDelegate {
             secondsSinceKeyDown: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown),
             secondsSinceFlagsChanged: CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .flagsChanged),
             shortcutHeld: !CGEventSource.flagsState(.combinedSessionState).isDisjoint(with: [.maskCommand, .maskControl]))
-    }
-
-    private func setUpStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let image = NSImage(systemSymbolName: "cursorarrow.motionlines", accessibilityDescription: "Jelly Cursor") {
-            item.button?.image = image
-        } else {
-            item.button?.title = "J"
-        }
-        let menu = NSMenu()
-        let toggle = NSMenuItem(title: "", action: #selector(toggleEnabled), keyEquivalent: "")
-        toggle.target = self
-        menu.addItem(toggle)
-        if !canHideCursor {
-            menu.addItem(NSMenuItem(title: "本物のカーソルを隠せませんでした", action: nil, keyEquivalent: ""))
-        }
-        menu.addItem(.separator())
-        let quit = NSMenuItem(title: "終了", action: #selector(quit), keyEquivalent: "q")
-        quit.target = self
-        menu.addItem(quit)
-        item.menu = menu
-        statusItem = item
-        toggleItem = toggle
-    }
-
-    @objc private func toggleEnabled() {
-        if isRunning { stop() } else { start() }
-    }
-
-    @objc private func quit() {
-        NSApp.terminate(nil)
-    }
-
-    private func setUpSignalHandlers() {
-        for sig in [SIGINT, SIGTERM, SIGHUP] {
-            signal(sig, SIG_IGN)
-            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-            source.setEventHandler {
-                MainActor.assumeIsolated { RealCursor.show() }
-                exit(0)
-            }
-            source.resume()
-            signalSources.append(source)
-        }
     }
 }

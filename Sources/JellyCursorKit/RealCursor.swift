@@ -34,6 +34,16 @@ enum RealCursor {
         hiddenStreak = 0
     }
 
+    // 本物のカーソルが見えなくなったときの逃げ道。自分が隠した回数の数え違いがあっても見えるよう、見えるまで重ねて戻す。
+    // 他のアプリが隠している分（動画の再生中など）は戻せないので、回数に上限を設ける
+    static func forceShow() {
+        show()
+        guard let isVisible else { return }
+        for _ in 0..<8 where isVisible() == 0 {
+            CGDisplayShowCursor(CGMainDisplayID())
+        }
+    }
+
     // 動画の再生中や文字入力中に、他のアプリが本物のカーソルを隠しているか。
     // 隠れているのが自分のせいだけかは直接は分からないので、自分の分だけ戻して、見えるようになるかを見る。
     // 戻したことは少し遅れて反映される（測ると多くは0.1ms以内、まれに2ms台）ので、見えるまで待ってすぐ隠し直す

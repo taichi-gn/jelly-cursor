@@ -130,10 +130,13 @@ final class Overlay {
         // 許可ダイアログなどのシステムの窓より手前に出すため、カーソル専用の層に置く
         w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.cursorWindow)))
         w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // 描くだけの窓なので、VoiceOver などに見せない
+        w.setAccessibilityElement(false)
 
         let view = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
         view.wantsLayer = true
         view.layerContentsRedrawPolicy = .never
+        view.setAccessibilityElement(false)
         w.contentView = view
 
         let border = CAShapeLayer()
