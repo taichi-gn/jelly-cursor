@@ -30,7 +30,8 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
+    [ -f "$OUT/settings-about.png" ] && { sips -s format jpeg -s formatOptions 70 "$OUT/settings-about.png" --out "$TOOLS/settings-about.jpg" >/dev/null || true; }
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/settings-about.jpg "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
