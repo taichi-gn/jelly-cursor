@@ -175,6 +175,9 @@ quit
 grep -q "cursor visible: true" "$TOOLS/after-quit.txt" || fail "終了したあとも本物のカーソルが見えていない"
 note "終了したあとは本物のカーソルが見えている"
 
+# Finder などが使う .app のアイコン（起動してしばらくたってから）
+note "$("$TOOLS/diagnose" JellyCursor "$APP" | grep "bundle icon" || echo "bundle icon: 読めない")"
+
 if ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i jellycursor; then
     fail "クラッシュの記録がある"
 fi

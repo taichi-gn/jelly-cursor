@@ -40,7 +40,9 @@ make test      # 試験を回す
 - **動き**: プリセットと「伸び」「弾み」の強さ（どちらも 100% が標準）。プレビューで動きを確かめられます
 - **カーソル**: 矢印・I 字・指を、種類ごとにオン・オフ
 - **自動で止める**: 「視差効果を減らす」がオンのとき（初期値オン）、低電力モードのとき（初期値オン）、全画面のアプリを使っているとき（初期値オフ）、使っている間は止めるアプリ
-- **情報**: バージョンと今の状態
+- **情報**: バージョンと今の状態。「診断情報をコピー」で、おかしな動きを伝えるときの情報をまとめてコピーできます
+
+はじめて起動したときは、案内つきで設定画面が開きます。
 
 画面のロック中、ほかのユーザーに切り替えている間、スクリーンセーバー、スリープの間は、いつも止めて本物のカーソルに戻します。
 
@@ -53,6 +55,7 @@ make test      # 試験を回す
 - **カーソルが見えなくなった**: 決めておいたショートカットでオフにするか、メニューの「本物のカーソルに戻す」を選びます。ターミナルで `killall JellyCursor` を実行しても、本物のカーソルに戻ってから終わります
 - **起動するとおかしくなる**: Shift キーを押しながら JellyCursor を開くと、何も隠さずに止めた状態（セーフモード）で起動します。メニューか設定でオンにすると動き始めます
 - **設定を消したい**: JellyCursor を終了してから `defaults delete local.jellycursor`（動いている間に消すと、次に設定を変えたときに書き戻されます）
+- **動きがおかしい**: 状態が変わったときなどの記録を残しています。Console.app で「local.jellycursor」を検索すると見られます
 
 ## 仕組み
 
@@ -68,7 +71,9 @@ make test      # 試験を回す
 | `JellyCursorKit` | 窓・本物のカーソル・メニュー・設定画面・ショートカット・Mac の状態の見張り |
 | `JellyCursor` | 起動だけ |
 
-試験は swift-testing で書いています。`GoldenMotionTests` は、決まったマウスの動きを流したときの形が、分割前（`efbc96a`）のコードで記録した値（`Tests/JellyCursorCoreTests/Resources/golden-motion.json`）と一致することを確かめます。動きの標準を意図して変えたときは、`RECORD_GOLDEN=1 swift test --filter GoldenMotionTests` で記録し直してください。
+試験は swift-testing で書いています。`JellyCursorKitTests` は macOS でだけ回り、本物のカーソルの画像の見分けや、アイコンの書き出しなどを確かめます。`GoldenMotionTests` は、決まったマウスの動きを流したときの形が、分割前（`efbc96a`）のコードで記録した値（`Tests/JellyCursorCoreTests/Resources/golden-motion.json`）と一致することを確かめます。動きの標準を意図して変えたときは、`RECORD_GOLDEN=1 swift test --filter GoldenMotionTests` で記録し直してください。
 
 CI（GitHub Actions）は、`JellyCursorCore` を Linux で、アプリ全体を macOS で、警告をエラーとして作って試験します。
-main 以外のブランチへの push で、いちばん新しいコミットのメッセージに `[screenshots]` を含めると、macOS でアプリを実際に起動して、設定画面の各タブと動かしている間のカーソルを撮り、本物のカーソルの出し入れ・ショートカット・⌘W で閉じることも確かめます（成果物の `screenshots`）。
+main 以外のブランチへの push で、いちばん新しいコミットのメッセージに `[screenshots]` を含めると、macOS でアプリを実際に起動して、はじめての起動の案内・設定画面の各タブ・メニュー・動かしている間のカーソルを撮り、本物のカーソルの出し入れ・ショートカット・⌘W で閉じたあとの前面・止まっている間と動かしている間の CPU も確かめます（成果物の `screenshots`）。
+
+起動時の `-OpenSettings <タブ>`（general・motion・cursors・autoPause・about）と `-OpenMenu YES` は、画面を撮るための指定です（`open JellyCursor.app --args -OpenSettings motion`）。
