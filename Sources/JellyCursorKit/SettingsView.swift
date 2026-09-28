@@ -374,12 +374,25 @@ private struct AboutPane: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("バージョン", value: version)
+                HStack(spacing: 14) {
+                    Image(nsImage: AppIconImage.make())
+                        .resizable()
+                        .frame(width: 64, height: 64)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("JellyCursor").font(.title2.weight(.semibold))
+                        Text("動かすと伸びて、止めると揺れて戻るカーソル").foregroundStyle(.secondary)
+                        Text("バージョン \(version)").font(.caption).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
                 LabeledContent("今の状態", value: status)
                 LabeledContent("本物のカーソルを隠す",
                                value: state.canHideCursor ? "できます" : "できません（自前の絵を重ねて描きます）")
-            } header: {
-                Text("JellyCursor — 動かすと伸びて揺れるカーソル")
             }
 
             Section("困ったとき") {
