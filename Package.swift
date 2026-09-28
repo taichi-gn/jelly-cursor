@@ -16,6 +16,8 @@ var targets: [Target] = [
 targets += [
     .target(name: "JellyCursorKit", dependencies: ["JellyCursorCore"]),
     .executableTarget(name: "JellyCursor", dependencies: ["JellyCursorKit"]),
+    // 本物のカーソルの画像や AppKit の値を使う試験。macOS でだけ回す
+    .testTarget(name: "JellyCursorKitTests", dependencies: ["JellyCursorKit", "JellyCursorCore"]),
 ]
 #endif
 

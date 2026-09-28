@@ -30,11 +30,12 @@ package final class AppController: NSObject, NSApplicationDelegate {
         // Shift を押しながら起動したら、何も隠さずに止めた状態で始める（おかしくなったときの逃げ道）
         state.safeMode = NSEvent.modifierFlags.contains(.shift)
         state.canHideCursor = RealCursor.allowBackgroundControl()
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "開発版"
+        logger.info("起動 \(version, privacy: .public) セーフモード=\(self.state.safeMode) 本物を隠せる=\(self.state.canHideCursor)")
         engine = CursorEngine(canHideCursor: state.canHideCursor, motion: MotionParameters(settings.values.motion),
                               cursorKinds: settings.values.cursorKinds)
         setUpSignalHandlers()
         NSApp.mainMenu = makeMainMenu()
-        NSApp.applicationIconImage = AppIconImage.make()
         statusMenu = StatusMenu(
             settings: settings, state: state, frontApp: { [weak self] in self?.system.lastOtherApp },
             actions: StatusMenu.Actions(
@@ -47,7 +48,10 @@ package final class AppController: NSObject, NSApplicationDelegate {
 
         settings.onChange = { [weak self] old in self?.settingsChanged(from: old) }
         system.onChange = { [weak self] in self?.update() }
-        system.onNeedsRebuild = { [weak self] in self?.engine?.restart() }
+        system.onNeedsRebuild = { [weak self] in
+            logger.info("スリープ復帰・ロック解除・画面構成の変化のあとで作り直す")
+            self?.engine?.restart()
+        }
         system.start()
         registerShortcut()
         update()
@@ -57,6 +61,16 @@ package final class AppController: NSObject, NSApplicationDelegate {
         if let name = UserDefaults.standard.string(forKey: "OpenSettings") {
             openSettings(tab: SettingsTab(rawValue: name))
         }
+        welcomeOnFirstLaunch()
+    }
+
+    // はじめて起動したときは、メニューバーのアイコンに気づけるよう、案内つきで設定画面を開く。
+    // 「初期状態に戻す」で消えないよう、設定とは別に覚えておく
+    private func welcomeOnFirstLaunch() {
+        let key = "welcomed"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        settingsWindow.show(tab: .general, welcome: true)
     }
 
     // 別の場所に置いた JellyCursor（作り直したものと、アプリケーションフォルダに入れたものなど）が動いていたら終わらせ、
@@ -65,6 +79,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         guard let id = Bundle.main.bundleIdentifier else { return }
         let me = ProcessInfo.processInfo.processIdentifier
         for other in NSRunningApplication.runningApplications(withBundleIdentifier: id) where other.processIdentifier != me {
+            logger.info("先に動いていた JellyCursor（pid \(other.processIdentifier)）を終わらせる")
             other.terminate()
         }
     }
@@ -86,6 +101,9 @@ package final class AppController: NSObject, NSApplicationDelegate {
         // 全画面かどうかは窓の一覧を1秒ごとに調べるので、使う設定のときだけ見る
         system.watchesFullScreen = settings.values.pauseInFullScreen && state.isEnabled(in: settings)
         let activity = Activity(settings: settings.values, conditions: system.conditions, safeMode: state.safeMode)
+        if activity != state.activity {
+            logger.info("状態: \(activity.summary.isEmpty ? String(describing: activity) : activity.summary, privacy: .public)")
+        }
         if activity.isRunning {
             engine.start()
         } else {
@@ -140,6 +158,9 @@ package final class AppController: NSObject, NSApplicationDelegate {
     private func registerShortcut() {
         let shortcut = settings.values.shortcut
         state.shortcutFailed = !hotKey.register(shortcut) { [weak self] in self?.toggleEnabled() }
+        if state.shortcutFailed, let shortcut {
+            logger.error("ショートカット \(shortcut.displayString, privacy: .public) を登録できない")
+        }
         statusMenu?.update()
     }
 

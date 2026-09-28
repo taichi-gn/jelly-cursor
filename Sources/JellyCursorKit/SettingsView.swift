@@ -15,6 +15,8 @@ final class SettingsNavigation {
     var tab = SettingsTab.general
     // 窓を閉じている間は、プレビューを描き直さない
     var isWindowOpen = false
+    // はじめて起動したときの案内を出しているか
+    var showsWelcome = false
 }
 
 struct SettingsView: View {
@@ -26,7 +28,7 @@ struct SettingsView: View {
 
     var body: some View {
         TabView(selection: $navigation.tab) {
-            GeneralPane(settings: settings, state: state, actions: actions, recorder: recorder)
+            GeneralPane(settings: settings, state: state, actions: actions, recorder: recorder, navigation: navigation)
                 .tabItem { Label("一般", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             MotionPane(settings: settings, isPreviewPaused: !navigation.isWindowOpen)
@@ -38,7 +40,7 @@ struct SettingsView: View {
             AutoPausePane(settings: settings)
                 .tabItem { Label("自動で止める", systemImage: "pause.circle") }
                 .tag(SettingsTab.autoPause)
-            AboutPane(state: state)
+            AboutPane(settings: settings, state: state)
                 .tabItem { Label("情報", systemImage: "info.circle") }
                 .tag(SettingsTab.about)
         }
@@ -52,11 +54,17 @@ private struct GeneralPane: View {
     let state: AppState
     let actions: AppActions
     let recorder: KeyRecorder
+    @Bindable var navigation: SettingsNavigation
     @State private var loginItem = LoginItem()
     @State private var confirmsReset = false
 
     var body: some View {
         Form {
+            if navigation.showsWelcome {
+                Section {
+                    WelcomeBanner { navigation.showsWelcome = false }
+                }
+            }
             Section {
                 Toggle("JellyCursor を有効にする", isOn: Binding(
                     get: { state.isEnabled(in: settings) },
@@ -331,9 +339,37 @@ private struct AppIcon: View {
     }
 }
 
+// はじめて起動したときの案内
+private struct WelcomeBanner: View {
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 48, height: 48)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("JellyCursor へようこそ").font(.headline)
+                Text("マウスを動かすと、カーソルが伸びて揺れます。メニューバーの \(Image(systemName: "cursorarrow.motionlines")) から、いつでもオン・オフや設定の変更ができます。")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button(action: dismiss) {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help("案内を閉じる")
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 // 情報: バージョン・今の状態・困ったとき
 private struct AboutPane: View {
+    let settings: AppSettings
     let state: AppState
+    @State private var copied = false
 
     var body: some View {
         Form {
@@ -350,9 +386,32 @@ private struct AboutPane: View {
                 Note("カーソルが見えなくなったら、ショートカットかメニューの「本物のカーソルに戻す」でオフにできます。"
                     + "ターミナルで killall JellyCursor を実行しても、本物のカーソルに戻って終わります")
                 Note("Shift キーを押しながら JellyCursor を開くと、止めた状態（セーフモード）で起動します")
+                HStack {
+                    Button("診断情報をコピー") { copyDiagnostics() }
+                    if copied {
+                        Text("コピーしました").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Note("おかしな動きを伝えるときに貼り付けてください。状態の記録は Console.app で「local.jellycursor」を検索すると見られます")
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func copyDiagnostics() {
+        let report = Diagnostics(
+            appVersion: version, osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            activity: state.activity, canHideCursor: state.canHideCursor, safeMode: state.safeMode,
+            pointerScale: Double(SystemPointer.scale()),
+            screens: NSScreen.screens.map { "\(Int($0.frame.width))×\(Int($0.frame.height))@\($0.backingScaleFactor)x" },
+            settings: settings.values, shortcutFailed: state.shortcutFailed)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report.text, forType: .string)
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            copied = false
+        }
     }
 
     private var version: String {
@@ -362,13 +421,7 @@ private struct AboutPane: View {
         return build.map { "\(short) (\($0))" } ?? short
     }
 
-    private var status: String {
-        switch state.activity {
-        case .running: "動いています"
-        case .off: "オフ"
-        case .safeMode, .paused: state.activity.statusLine ?? ""
-        }
-    }
+    private var status: String { state.activity.summary }
 }
 
 // 小さな灰色の説明文

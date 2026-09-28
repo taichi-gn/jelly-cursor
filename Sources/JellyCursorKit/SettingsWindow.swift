@@ -24,8 +24,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     // メニューバーだけのアプリ（.accessory）のままだと前面に出せないので、開いている間だけふつうのアプリにする
-    func show(tab: SettingsTab? = nil) {
+    // welcome が true なら、一般タブの上に、はじめて使う人向けの案内を出す
+    func show(tab: SettingsTab? = nil, welcome: Bool = false) {
         if let tab { navigation.tab = tab }
+        if welcome { navigation.showsWelcome = true }
         navigation.isWindowOpen = true
         let window = self.window ?? makeWindow()
         self.window = window

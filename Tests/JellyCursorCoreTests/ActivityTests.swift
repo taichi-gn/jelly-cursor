@@ -109,3 +109,26 @@ import Testing
         #expect(!InstallLocation.isInApplicationsFolder("/Users/b/Applications/JellyCursor.app", home: "/Users/a"))
     }
 }
+
+@Suite struct DiagnosticsTests {
+    @Test func summarizesStateAndSettings() {
+        var settings = SettingsValues()
+        settings.shortcut = KeyCombo(keyCode: 0x26, modifiers: [.control, .option], characters: "j")
+        let report = Diagnostics(appVersion: "0.3 (3)", osVersion: "Version 26.0", activity: .paused(.lowPower),
+                                 canHideCursor: true, safeMode: false, pointerScale: 1.5,
+                                 screens: ["1512×982@2.0x", "1920×1080@1.0x"], settings: settings, shortcutFailed: true)
+        let lines = report.text.split(separator: "\n").map(String.init)
+        #expect(lines[0] == "JellyCursor 0.3 (3)")
+        #expect(lines.contains("状態: 一時停止中: 低電力モードです"))
+        #expect(lines.contains("ポインタの大きさ: 1.50"))
+        #expect(lines.contains("画面: 1512×982@2.0x, 1920×1080@1.0x"))
+        #expect(lines.contains("ショートカット: ⌃⌥J（登録できない）"))
+        #expect(lines.last?.hasPrefix("設定: {") == true)
+    }
+
+    @Test func summaries() {
+        #expect(Activity.running.summary == "動いています")
+        #expect(Activity.off.summary == "オフ")
+        #expect(Activity.safeMode.summary == Activity.safeMode.statusLine)
+    }
+}
