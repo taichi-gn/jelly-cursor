@@ -3,9 +3,20 @@ import JellyCursorCore
 import Testing
 @testable import JellyCursorKit
 
-// macOS の本物のカーソルの画像で、形の見分けを確かめる
+// macOS の本物のカーソルの画像で、形の見分けを確かめる。
+// 画面の仕組みにつながっていないと矢印と I 字の画像が空になるので、先にアプリとしてつないでおく
 @MainActor
 @Suite struct CursorShapeKitTests {
+    init() {
+        _ = NSApplication.shared
+    }
+
+    @Test func imagesAreNotEmpty() {
+        for cursor in [NSCursor.arrow, .iBeam, .pointingHand] {
+            #expect(!CursorShape(cursor).isEmpty)
+        }
+    }
+
     @Test func drawnKindsAreRecognized() {
         #expect(CursorShapeWatch.classify(.arrow) == .arrow)
         #expect(CursorShapeWatch.classify(.iBeam) == .iBeam)

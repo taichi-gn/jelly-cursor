@@ -25,6 +25,9 @@ package struct CursorShape: Sendable {
         opaque = stride(from: 1, to: grayAlpha.count, by: 2).map { grayAlpha[$0] > 127 }
     }
 
+    // 塗られた画素が1つも無い（画像を取れなかった）
+    package var isEmpty: Bool { !opaque.contains(true) }
+
     package func matches(_ other: CursorShape) -> Bool {
         guard hotSpot == other.hotSpot, size == other.size, opaque.count == other.opaque.count else { return false }
         let filled = opaque.filter { $0 }.count

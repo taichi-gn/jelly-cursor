@@ -345,7 +345,7 @@ private struct WelcomeBanner: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage)
+            Image(nsImage: AppIconImage.make())
                 .resizable()
                 .frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: 4) {

@@ -8,7 +8,15 @@ set -euo pipefail
 OUT="$PWD/screenshots"
 APP="$PWD/JellyCursor.app"
 TOOLS="$PWD/.build/ci-tools"
+SUMMARY="$TOOLS/summary.txt"
 mkdir -p "$OUT" "$TOOLS"
+: >"$SUMMARY"
+
+# 結果の要点。ログの最後にまとめて出す（画像のあとに出さないと、長いログの取り出しで切れる）
+note() {
+    echo "$1"
+    echo "$1" >>"$SUMMARY"
+}
 for tool in window-bounds move-mouse diagnose press-key click; do
     swiftc -O ".github/scripts/$tool.swift" -o "$TOOLS/$tool"
 done
@@ -29,9 +37,15 @@ quit() {
 }
 
 fail() {
-    echo "$1"
+    note "失敗: $1"
+    cat "$SUMMARY"
     exit 1
 }
+
+# .app に入れたアイコン
+note "Resources: $(ls "$APP/Contents/Resources" | tr '\n' ' ')"
+note "Info.plist のアイコン: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist" 2>&1)"
+sips -s format png -Z 256 "$APP/Contents/Resources/AppIcon.icns" --out "$OUT/icon.png" >/dev/null 2>&1 || note "AppIcon.icns を読めない"
 
 # 設定を書く（JSON を UserDefaults のデータとして）
 write_settings() {
@@ -57,7 +71,7 @@ defaults write local.jellycursor welcomed -bool true
 for tab in general motion cursors autoPause about; do
     launch -OpenSettings "$tab"
     bounds=$("$TOOLS/window-bounds" JellyCursor)
-    echo "settings-$tab: $bounds"
+    note "settings-$tab: $bounds"
     screencapture -x -R"$bounds" "$OUT/settings-$tab.png"
     quit
 done
@@ -70,37 +84,37 @@ if status=$("$TOOLS/window-bounds" JellyCursor 25); then
         sleep 1
         if menu=$("$TOOLS/window-bounds" JellyCursor 101); then
             screencapture -x -R"$menu" "$OUT/menu.png"
-            echo "メニュー: $menu"
+            note "メニュー: $menu"
         else
-            echo "メニューが開かなかった"
+            note "メニューが開かなかった"
         fi
         "$TOOLS/press-key" 53 || true
     fi
 else
-    echo "メニューバーのアイコンが見つからなかった"
+    note "メニューバーのアイコンが見つからなかった"
 fi
 quit
 
 # 設定画面をクリックしてから ⌘W で閉じたら、窓が消えて、前面が開く前のアプリに戻ること。
 # 起動しただけでは前面になれない（macOS 14 からは、ユーザーの操作なしに前面を取れない）ので、実際の使い方と同じくクリックする
 before=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
-echo "開く前: $before"
+note "開く前: $before"
 launch -OpenSettings general
 IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
 if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
     sleep 1
-    echo "クリックしたあと: $("$TOOLS/diagnose" JellyCursor | grep frontmost)"
+    note "クリックしたあと: $("$TOOLS/diagnose" JellyCursor | grep frontmost)"
     "$TOOLS/press-key" 13 command
     sleep 1
     after=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
-    echo "閉じたあと: $after"
+    note "閉じたあと: $after"
     if "$TOOLS/window-bounds" JellyCursor 2>/dev/null; then
         fail "⌘W で設定画面が閉じなかった"
     fi
     [ "$after" != "frontmost: JellyCursor" ] || fail "設定画面を閉じても JellyCursor が前面に残った"
-    echo "⌘W で設定画面が閉じ、前面が戻った"
+    note "⌘W で設定画面が閉じ、前面が戻った"
 else
-    echo "イベントを送る許可が無いので、⌘W の確認は飛ばした"
+    note "イベントを送る許可が無いので、⌘W の確認は飛ばした"
 fi
 quit
 
@@ -117,7 +131,7 @@ sleep 2
 start=$(cpu_seconds "$pid")
 sleep 10
 idle=$(awk -v a="$start" -v b="$(cpu_seconds "$pid")" 'BEGIN { printf "%.1f", (b - a) / 10 * 100 }')
-echo "止まっている間の CPU: ${idle}%"
+note "止まっている間の CPU: ${idle}%"
 "$TOOLS/move-mouse" 600 400 150 2.0 &
 mover=$!
 sleep 1.2
@@ -129,7 +143,7 @@ screencapture -x -R"380,180,440,440" "$OUT/stopping.png"
 start=$(cpu_seconds "$pid")
 "$TOOLS/move-mouse" 500 380 120 5.0
 moving=$(awk -v a="$start" -v b="$(cpu_seconds "$pid")" 'BEGIN { printf "%.1f", (b - a) / 5 * 100 }')
-echo "動かしている間の CPU: ${moving}%"
+note "動かしている間の CPU: ${moving}%"
 "$TOOLS/diagnose" JellyCursor
 quit
 # 止まっている間に何かが回り続けていないこと（仮想マシンの揺れを見込んで、ゆるく確かめる）
@@ -153,9 +167,9 @@ if [ "$pressed" -eq 0 ]; then
     sleep 1
     "$TOOLS/diagnose" JellyCursor | tee "$TOOLS/after-shortcut-again.txt"
     grep -q "layer=2147483630" "$TOOLS/after-shortcut-again.txt" || fail "ショートカットでオンに戻らなかった"
-    echo "ショートカットの確認: 通過"
+    note "ショートカットの確認: 通過"
 else
-    echo "キー入力を送る許可が無いので、ショートカットの確認は飛ばした"
+    note "キー入力を送る許可が無いので、ショートカットの確認は飛ばした"
 fi
 quit
 
@@ -163,15 +177,20 @@ quit
 # プロセスが終われば macOS も戻すので、終わり方の全体を確かめるもので、シグナルの受け取り方だけを確かめるものではない
 "$TOOLS/diagnose" JellyCursor | tee "$TOOLS/after-quit.txt"
 grep -q "cursor visible: true" "$TOOLS/after-quit.txt" || fail "終了したあとも本物のカーソルが見えていない"
+note "終了したあとは本物のカーソルが見えている"
 
 if ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i jellycursor; then
     fail "クラッシュの記録がある"
 fi
 ls -la "$OUT"
 
-# 成果物を取り出せない環境でも見られるよう、画像を base64 でログにも出す
-for png in "$OUT"/*.png; do
-    echo "BEGIN-IMAGE $(basename "$png")"
-    base64 -b 100 -i "$png"
+# 成果物を取り出せない環境でも見られるよう、画像を base64 でログにも出す。画面全体は大きいので縮めた JPEG にする
+sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/screen.png" --out "$TOOLS/screen.jpg" >/dev/null
+for image in "$TOOLS/screen.jpg" "$OUT"/[!s]*.png "$OUT"/s[!c]*.png; do
+    [ -f "$image" ] || continue
+    echo "BEGIN-IMAGE $(basename "$image")"
+    base64 -b 100 -i "$image"
     echo "END-IMAGE"
 done
+echo "===== まとめ ====="
+cat "$SUMMARY"
