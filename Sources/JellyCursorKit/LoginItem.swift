@@ -31,6 +31,7 @@ final class LoginItem {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+            AppLog.error("ログイン時の起動を\(enabled ? "登録" : "解除")できない: \(error.localizedDescription)")
         }
         refresh()
     }

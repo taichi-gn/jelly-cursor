@@ -11,6 +11,19 @@ if let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGCursorIsVisibl
     print("cursor visible: \(unsafeBitCast(symbol, to: Int32Getter.self)() != 0)")
 }
 print("frontmost: \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "なし")")
+let regular = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+print("regular apps: \(regular.map { $0.localizedName ?? "?" }.joined(separator: ", "))")
+// 2つ目の引数に .app の場所を渡すと、Finder などが使うアイコンの真ん中の色を出す（JellyCursor のアイコンなら紫がかる）
+if CommandLine.arguments.count > 2 {
+    let icon = NSWorkspace.shared.icon(forFile: CommandLine.arguments[2])
+    var rect = NSRect(x: 0, y: 0, width: 64, height: 64)
+    if let image = icon.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let c = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh * 3 / 4)?.usingColorSpace(.sRGB)
+        print(String(format: "bundle icon color: r=%.2f g=%.2f b=%.2f", c?.redComponent ?? -1, c?.greenComponent ?? -1,
+                     c?.blueComponent ?? -1))
+    }
+}
 let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
 for info in infos where info[kCGWindowOwnerName as String] as? String == owner {
     let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0

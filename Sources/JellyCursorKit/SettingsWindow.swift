@@ -24,12 +24,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     // メニューバーだけのアプリ（.accessory）のままだと前面に出せないので、開いている間だけふつうのアプリにする
-    func show(tab: SettingsTab? = nil) {
+    // welcome が true なら、一般タブの上に、はじめて使う人向けの案内を出す
+    func show(tab: SettingsTab? = nil, welcome: Bool = false) {
         if let tab { navigation.tab = tab }
-        navigation.isWindowOpen = true
+        if welcome { navigation.showsWelcome = true }
         let window = self.window ?? makeWindow()
         self.window = window
         NSApp.setActivationPolicy(.regular)
+        // Dock のアイコンは、ふつうのアプリになってから渡さないと空のアイコンのままになる（macOS 26 で確認）
+        NSApp.applicationIconImage = AppIconImage.make()
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
@@ -38,7 +41,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // 開く前に使っていたアプリへ前面を返す
     func windowWillClose(_ notification: Notification) {
         recorder.stop()
-        navigation.isWindowOpen = false
+        // 案内は閉じるボタンで消さなくても、次に開いたときには出さない
+        navigation.showsWelcome = false
         NSApp.setActivationPolicy(.accessory)
         guard let id = previousApp()?.bundleID,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first else { return }
