@@ -11,6 +11,8 @@ if let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGCursorIsVisibl
     print("cursor visible: \(unsafeBitCast(symbol, to: Int32Getter.self)() != 0)")
 }
 print("frontmost: \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "なし")")
+let regular = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+print("regular apps: \(regular.map { $0.localizedName ?? "?" }.joined(separator: ", "))")
 if let screen = NSScreen.screens.first {
     print("screen size: \(Int(screen.frame.width)) \(Int(screen.frame.height))")
 }
