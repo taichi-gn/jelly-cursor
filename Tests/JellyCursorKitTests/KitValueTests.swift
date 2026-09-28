@@ -73,3 +73,18 @@ import Testing
         #expect((bitmap.colorAt(x: 128, y: 128)?.alphaComponent ?? 0) > 0.99)
     }
 }
+
+// 診断情報に入れる記録は、この起動のあいだに書いたものを読めること
+@Suite struct RecentLogTests {
+    @Test func readsWhatWasJustLogged() async throws {
+        let message = "試験の記録 \(UUID().uuidString)"
+        logger.notice("\(message, privacy: .public)")
+        // 書いてから読めるようになるまで、少し待つことがある
+        var found = false
+        for _ in 0..<20 where !found {
+            found = recentLogLines(limit: 200).contains { $0.hasSuffix(message) }
+            if !found { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        #expect(found)
+    }
+}

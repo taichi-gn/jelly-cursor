@@ -43,6 +43,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         recorder.stop()
         navigation.isWindowOpen = false
+        // 案内は閉じるボタンで消さなくても、次に開いたときには出さない
+        navigation.showsWelcome = false
         NSApp.setActivationPolicy(.accessory)
         guard let id = previousApp()?.bundleID,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first else { return }

@@ -12,9 +12,12 @@ package struct Diagnostics: Sendable {
     package var screens: [String]
     package var settings: SettingsValues
     package var shortcutFailed: Bool
+    // 最近の記録（起動・状態の変化など）。古い順
+    package var recentLog: [String]
 
     package init(appVersion: String, osVersion: String, activity: Activity, canHideCursor: Bool, safeMode: Bool,
-                 pointerScale: Double, screens: [String], settings: SettingsValues, shortcutFailed: Bool) {
+                 pointerScale: Double, screens: [String], settings: SettingsValues, shortcutFailed: Bool,
+                 recentLog: [String] = []) {
         self.appVersion = appVersion
         self.osVersion = osVersion
         self.activity = activity
@@ -24,6 +27,7 @@ package struct Diagnostics: Sendable {
         self.screens = screens
         self.settings = settings
         self.shortcutFailed = shortcutFailed
+        self.recentLog = recentLog
     }
 
     package var text: String {
@@ -42,6 +46,10 @@ package struct Diagnostics: Sendable {
         encoder.outputFormatting = [.sortedKeys]
         if let data = try? encoder.encode(settings), let json = String(data: data, encoding: .utf8) {
             lines.append("設定: \(json)")
+        }
+        if !recentLog.isEmpty {
+            lines.append("最近の記録:")
+            lines += recentLog.map { "  " + $0 }
         }
         return lines.joined(separator: "\n")
     }

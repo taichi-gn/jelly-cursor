@@ -370,6 +370,7 @@ private struct AboutPane: View {
     let settings: AppSettings
     let state: AppState
     @State private var copied = false
+    @State private var copies = 0
 
     var body: some View {
         Form {
@@ -405,7 +406,7 @@ private struct AboutPane: View {
                         Text("コピーしました").font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Note("おかしな動きを伝えるときに貼り付けてください。状態の記録は Console.app で「local.jellycursor」を検索すると見られます")
+                Note("おかしな動きを伝えるときに貼り付けてください。この起動のあいだの状態の変化の記録も入ります")
             }
         }
         .formStyle(.grouped)
@@ -417,13 +418,16 @@ private struct AboutPane: View {
             activity: state.activity, canHideCursor: state.canHideCursor, safeMode: state.safeMode,
             pointerScale: Double(SystemPointer.scale()),
             screens: NSScreen.screens.map { "\(Int($0.frame.width))×\(Int($0.frame.height))@\($0.backingScaleFactor)x" },
-            settings: settings.values, shortcutFailed: state.shortcutFailed)
+            settings: settings.values, shortcutFailed: state.shortcutFailed, recentLog: recentLogLines())
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(report.text, forType: .string)
+        // 続けて押したときは、最後に押してから2秒たつまで「コピーしました」を出しておく
+        copies += 1
+        let copy = copies
         copied = true
         Task {
             try? await Task.sleep(for: .seconds(2))
-            copied = false
+            if copies == copy { copied = false }
         }
     }
 

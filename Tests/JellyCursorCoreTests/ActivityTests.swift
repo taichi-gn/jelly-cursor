@@ -126,6 +126,16 @@ import Testing
         #expect(lines.last?.hasPrefix("設定: {") == true)
     }
 
+    @Test func appendsRecentLogLast() {
+        let report = Diagnostics(appVersion: "0.3", osVersion: "26.0", activity: .running, canHideCursor: true,
+                                 safeMode: false, pointerScale: 1, screens: [], settings: SettingsValues(),
+                                 shortcutFailed: false, recentLog: ["10:00:00 起動 0.3", "10:00:01 状態: 動いています"])
+        let lines = report.text.split(separator: "\n").map(String.init)
+        #expect(lines.contains("画面: なし"))
+        #expect(lines.contains("ショートカット: なし"))
+        #expect(Array(lines.suffix(3)) == ["最近の記録:", "  10:00:00 起動 0.3", "  10:00:01 状態: 動いています"])
+    }
+
     @Test func summaries() {
         #expect(Activity.running.summary == "動いています")
         #expect(Activity.off.summary == "オフ")

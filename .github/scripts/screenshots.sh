@@ -18,7 +18,7 @@ note() {
     echo "$1"
     echo "$1" >>"$SUMMARY"
 }
-for tool in window-bounds move-mouse diagnose press-key click dock-tile image-stats; do
+for tool in window-bounds move-mouse diagnose press-key click ax-frame image-stats; do
     swiftc -O ".github/scripts/$tool.swift" -o "$TOOLS/$tool"
 done
 
@@ -30,7 +30,7 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$TOOLS"/preview-1.png "$TOOLS"/preview-clicked.png "$OUT"/settings-motion.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
@@ -60,6 +60,18 @@ fail() {
     exit 1
 }
 
+# 画面の部品の範囲をアクセシビリティの API で探す（ax-frame <バンドル ID> <名前>）。
+# 中身を読めなかったとき（3）は、忙しいだけのことがあるので少し待って3回まで試す
+ax_frame() {
+    local status=1
+    for _ in 1 2 3; do
+        if "$TOOLS/ax-frame" "$@"; then return 0; else status=$?; fi
+        [ "$status" -eq 3 ] || return "$status"
+        sleep 1
+    done
+    return "$status"
+}
+
 # .app に入れたアイコン
 note "Resources: $(ls "$APP/Contents/Resources" | tr '\n' ' ')"
 note "Info.plist のアイコン: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist" 2>&1)"
@@ -84,7 +96,7 @@ screencapture -x -R"$bounds" "$OUT/welcome.png"
 screencapture -x "$OUT/screen.png"
 note "設定画面を開いたあと: $("$TOOLS/diagnose" JellyCursor | grep "regular apps")"
 set +e
-tile=$("$TOOLS/dock-tile" JellyCursor)
+tile=$(ax_frame com.apple.dock JellyCursor)
 found=$?
 set -e
 if [ "$found" -eq 0 ]; then
@@ -98,6 +110,8 @@ if [ "$found" -eq 0 ]; then
     awk -v v="$colorful" 'BEGIN { exit !(v >= 0.3) }' || fail "Dock のアイコンが色の無い（空の）アイコンになっている"
 elif [ "$found" -eq 2 ]; then
     note "アクセシビリティの許可が無いので、Dock のアイコンの確認は飛ばした"
+elif [ "$found" -eq 3 ]; then
+    note "Dock の中身を読めなかったので、Dock のアイコンの確認は飛ばした"
 else
     fail "設定画面を開いても Dock にアイコンが出ていない"
 fi
@@ -111,33 +125,30 @@ for tab in general motion cursors autoPause about; do
     note "settings-$tab: $bounds"
     screencapture -x -R"$bounds" "$OUT/settings-$tab.png"
     if [ "$tab" = motion ]; then
-        # プレビューに矢印と I 字が描かれていて、動いていること（プレビューの枠は、窓の左上から見て決まった場所にある）
-        IFS=, read -r wx wy _ _ <<<"$bounds"
-        preview="$((wx + 30)),$((wy + 335)),500,175"
-        screencapture -x -R"$preview" "$TOOLS/preview-1.png"
-        sleep 0.4
-        screencapture -x -R"$preview" "$TOOLS/preview-2.png"
-        first=$("$TOOLS/image-stats" "$TOOLS/preview-1.png")
-        second=$("$TOOLS/image-stats" "$TOOLS/preview-2.png")
-        note "プレビュー: $first / $second"
-        dark=$(sed -E 's/.*dark=([0-9.]+).*/\1/' <<<"$first")
-        if ! awk -v v="$dark" 'BEGIN { exit !(v >= 0.001) }'; then
-            # 窓が前面にないせいかを見分けるため、タイトルをクリックしてからもう一度撮る
-            IFS=, read -r _ _ ww _ <<<"$bounds"
-            "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)) || true
-            sleep 1
-            screencapture -x -R"$preview" "$TOOLS/preview-clicked.png"
-            note "クリックしたあとのプレビュー: $("$TOOLS/image-stats" "$TOOLS/preview-clicked.png")"
-            { log show --last 5m --style compact --predicate 'subsystem == "local.jellycursor"' | grep DEBUG || true; } | while read -r line; do note "  $line"; done
-            fail "動きのプレビューに何も描かれていない"
-        fi
-        [ "${first##*checksum=}" != "${second##*checksum=}" ] || fail "動きのプレビューが止まっている"
+        # プレビューに矢印と I 字が描かれていて、動いていること。
+        # プレビューは道筋の途中で1秒近く止まって見えることがあるので、それより長くあけて3回撮り、どこかで変わっていればよい
+        preview=$(ax_frame local.jellycursor "動きのプレビュー") || fail "動きのプレビューが見つからない"
+        note "プレビューの範囲: $preview"
+        checksums=""
+        for shot in 1 2 3; do
+            [ "$shot" -eq 1 ] || sleep 1.2
+            screencapture -x -R"$preview" "$TOOLS/preview-$shot.png"
+            stats=$("$TOOLS/image-stats" "$TOOLS/preview-$shot.png")
+            note "プレビュー $shot: $stats"
+            dark=$(sed -E 's/.*dark=([0-9.]+).*/\1/' <<<"$stats")
+            awk -v v="$dark" 'BEGIN { exit !(v >= 0.001) }' || fail "動きのプレビューに何も描かれていない"
+            checksums="$checksums ${stats##*checksum=}"
+        done
+        different=$(printf '%s\n' $checksums | sort -u | wc -l | tr -d ' ')
+        [ "$different" -gt 1 ] || fail "動きのプレビューが止まっている"
     fi
     quit
 done
 
 # メニューバーのメニューを開いて撮る。macOS 26 ではメニューバーのアイコンが窓の一覧に出ず、
-# クリックする場所が分からないので、起動時の指定でアプリに開かせる
+# クリックする場所が分からないので、起動時の指定でアプリに開かせる。
+# README に使うので、「視差効果を減らす」で止めずに、動いているときのメニューにする
+write_settings '{"pauseWhenReduceMotion": false, "pauseOnLowPower": false}'
 launch -OpenMenu YES
 sleep 1
 "$TOOLS/diagnose" JellyCursor | grep "window layer" || true
@@ -238,13 +249,12 @@ note "終了したあとは本物のカーソルが見えている"
 # Finder などが使う .app のアイコン（起動してしばらくたってから）
 note "$("$TOOLS/diagnose" JellyCursor "$APP" | grep "bundle icon" || echo "bundle icon: 読めない")"
 
-# 起動や状態の変化の記録が残っていて、あとから Console.app や log show で見られること
+# 起動や状態の変化の記録が残っていて、あとから log show で見られること
 log show --last 15m --style compact --predicate 'subsystem == "local.jellycursor"' >"$TOOLS/log.txt" 2>&1 || true
 entries=$(grep -c "local.jellycursor" "$TOOLS/log.txt" || true)
 note "残っている記録: ${entries} 件"
 { grep "local.jellycursor" "$TOOLS/log.txt" || true; } | tail -4 | while read -r line; do note "  $line"; done
 [ "$entries" -gt 0 ] || fail "記録が残っていない"
-grep "DEBUG" "$TOOLS/log.txt" | head -20 || true
 
 if ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i jellycursor; then
     fail "クラッシュの記録がある"

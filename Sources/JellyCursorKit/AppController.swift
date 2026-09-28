@@ -1,5 +1,6 @@
 import AppKit
 import JellyCursorCore
+import ServiceManagement
 
 // アプリ全体の流れ。設定と Mac の状態から描くかどうかを決め（Activity）、描くのは CursorEngine に任せる
 @MainActor
@@ -60,11 +61,11 @@ package final class AppController: NSObject, NSApplicationDelegate {
         update()
         // アイコンを隠していると、セーフモードで起動したことに気づけないので設定画面を開く
         if state.safeMode && !settings.values.showsMenuBarIcon { openSettings() }
+        welcomeOnFirstLaunch()
         // 起動時に -OpenSettings <タブ> を渡すと、そのタブで設定画面を開く（open JellyCursor.app --args -OpenSettings motion）
         if let name = UserDefaults.standard.string(forKey: "OpenSettings") {
             openSettings(tab: SettingsTab(rawValue: name))
         }
-        welcomeOnFirstLaunch()
         // 起動時に -OpenMenu YES を渡すと、メニューバーのメニューを開く（見た目を撮るため）
         if UserDefaults.standard.bool(forKey: "OpenMenu") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -74,11 +75,16 @@ package final class AppController: NSObject, NSApplicationDelegate {
     }
 
     // はじめて起動したときは、メニューバーのアイコンに気づけるよう、案内つきで設定画面を開く。
-    // 「初期状態に戻す」で消えないよう、設定とは別に覚えておく
+    // 「初期状態に戻す」で消えないよう、設定とは別に覚えておく。
+    // 案内が無かった版から上げた人（設定を変えたことがある・ログイン時に起動している）には出さない
     private func welcomeOnFirstLaunch() {
+        let defaults = UserDefaults.standard
         let key = "welcomed"
-        guard !UserDefaults.standard.bool(forKey: key) else { return }
-        UserDefaults.standard.set(true, forKey: key)
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        let usedBefore = defaults.object(forKey: AppSettings.defaultsKey) != nil
+            || [.enabled, .requiresApproval].contains(SMAppService.mainApp.status)
+        guard !usedBefore else { return }
         settingsWindow.show(tab: .general, welcome: true)
     }
 
@@ -111,7 +117,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         system.watchesFullScreen = settings.values.pauseInFullScreen && state.isEnabled(in: settings)
         let activity = Activity(settings: settings.values, conditions: system.conditions, safeMode: state.safeMode)
         if activity != state.activity {
-            logger.notice("状態: \(activity.summary.isEmpty ? String(describing: activity) : activity.summary, privacy: .public)")
+            logger.notice("状態: \(activity.summary, privacy: .public)")
         }
         if activity.isRunning {
             engine.start()
