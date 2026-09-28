@@ -40,7 +40,7 @@ make test      # 試験を回す
 | 本物のカーソルに戻す | オフにして、本物のカーソルを確実に表示する |
 | 設定…（⌘,） | 設定画面を開く |
 
-<img src="docs/images/menu.png" width="366" alt="メニュー">
+<img src="docs/images/menu.png" width="231" alt="メニュー">
 
 ### 設定画面
 
