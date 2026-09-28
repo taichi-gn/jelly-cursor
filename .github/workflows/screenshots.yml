@@ -1,0 +1,23 @@
+name: Screenshots
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  # macOS の実行時間を使うので、手で動かしたときか、main 以外への push でいちばん新しいコミットのメッセージに
+  # [screenshots] があるときだけ撮る（squash マージのメッセージに残っていても main では撮らない）
+  screenshots:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.ref != 'refs/heads/main' && contains(github.event.head_commit.message, '[screenshots]'))
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - run: make app
+      - run: .github/scripts/screenshots.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/
