@@ -17,6 +17,7 @@ struct MotionPreview: View {
             }
         }
         .onAppear {
+            logger.notice("DEBUG プレビュー onAppear isPaused=\(isPaused) model=\(model != nil)")
             if model == nil { model = PreviewModel() }
         }
         .accessibilityElement()
@@ -38,7 +39,13 @@ private final class PreviewModel {
     private var lastDate: Date?
     private let colors = SystemPointer.colors()
 
+    private var frames = 0
+
     func draw(in graphics: inout GraphicsContext, size: CGSize, date: Date, style: MotionStyle) {
+        frames += 1
+        if frames == 1 || frames == 60 {
+            logger.notice("DEBUG プレビュー frame=\(self.frames) size=\(size.width)x\(size.height) time=\(self.time)")
+        }
         if style != self.style {
             self.style = style
             let motion = MotionParameters(style)

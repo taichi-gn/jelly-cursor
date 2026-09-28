@@ -2,7 +2,8 @@
 # CI の macOS で JellyCursor を実際に起動して確かめ、画面を撮る。
 # - はじめての起動の案内、設定画面の各タブ、メニューバーのメニュー、Dock のアイコン
 # - 円を描いて動かしている間と、止めた直後のカーソル
-# - 本物のカーソルの出し入れ、ショートカット、⌘W で閉じたあとの前面、止まっている間と動かしている間の CPU
+# - 本物のカーソルの出し入れ、ショートカット、⌘W で閉じたあとの前面、止まっている間と動かしている間の CPU、
+#   動きのプレビュー、Dock のアイコン、残る記録
 # キー入力やクリックを送る許可が無い Mac では、それを使う確認だけ飛ばす
 set -euo pipefail
 OUT="$PWD/screenshots"
@@ -17,17 +18,35 @@ note() {
     echo "$1"
     echo "$1" >>"$SUMMARY"
 }
-for tool in window-bounds move-mouse diagnose press-key click dock-tile; do
+for tool in window-bounds move-mouse diagnose press-key click dock-tile image-stats; do
     swiftc -O ".github/scripts/$tool.swift" -o "$TOOLS/$tool"
 done
+
+# 終わるとき（途中で失敗したときも）に、撮った画像と結果の要点を出す。
+# 成果物を取り出せない環境でも見られるよう、画像は base64 でログにも出す。画面全体は大きいので縮めた JPEG にする。
+# 設定画面の各タブは成果物にだけ入れ、ログには、確かめたい画像だけを出す
+report() {
+    for name in screen menu-screen; do
+        [ -f "$OUT/$name.png" ] || continue
+        sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
+    done
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$TOOLS"/preview-1.png "$TOOLS"/preview-clicked.png "$OUT"/settings-motion.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
+        [ -f "$image" ] || continue
+        echo "BEGIN-IMAGE $(basename "$image")"
+        base64 -b 100 -i "$image"
+        echo "END-IMAGE"
+    done
+    echo "===== まとめ ====="
+    cat "$SUMMARY"
+}
+trap report EXIT
 
 launch() {
     open -n "$APP" --args "$@"
     sleep 5
     if ! pgrep -x JellyCursor >/dev/null; then
-        echo "JellyCursor が起動後に終わってしまった"
         ls -la ~/Library/Logs/DiagnosticReports 2>/dev/null || true
-        exit 1
+        fail "JellyCursor が起動後に終わってしまった"
     fi
 }
 
@@ -38,7 +57,6 @@ quit() {
 
 fail() {
     note "失敗: $1"
-    cat "$SUMMARY"
     exit 1
 }
 
@@ -71,9 +89,13 @@ found=$?
 set -e
 if [ "$found" -eq 0 ]; then
     screencapture -x -R"$tile" "$OUT/dock-tile.png"
-    color=$("$TOOLS/dock-tile" --color "$OUT/dock-tile.png")
-    note "Dock のアイコン: $tile $color"
-    awk -v v="${color##*=}" 'BEGIN { exit !(v >= 0.15) }' || fail "Dock のアイコンが色の無い（空の）アイコンになっている"
+    # 範囲には Dock の背景も入るので、真ん中だけを見る。空のアイコンは灰色で、色の付いた点がほとんど無い
+    IFS=, read -r tx ty tw th <<<"$tile"
+    screencapture -x -R"$((tx + tw / 4)),$((ty + th / 4)),$((tw / 2)),$((th / 2))" "$TOOLS/dock-tile-center.png"
+    stats=$("$TOOLS/image-stats" "$TOOLS/dock-tile-center.png")
+    note "Dock のアイコン: $tile $stats"
+    colorful=$(sed -E 's/.*colorful=([0-9.]+).*/\1/' <<<"$stats")
+    awk -v v="$colorful" 'BEGIN { exit !(v >= 0.3) }' || fail "Dock のアイコンが色の無い（空の）アイコンになっている"
 elif [ "$found" -eq 2 ]; then
     note "アクセシビリティの許可が無いので、Dock のアイコンの確認は飛ばした"
 else
@@ -88,6 +110,29 @@ for tab in general motion cursors autoPause about; do
     bounds=$("$TOOLS/window-bounds" JellyCursor)
     note "settings-$tab: $bounds"
     screencapture -x -R"$bounds" "$OUT/settings-$tab.png"
+    if [ "$tab" = motion ]; then
+        # プレビューに矢印と I 字が描かれていて、動いていること（プレビューの枠は、窓の左上から見て決まった場所にある）
+        IFS=, read -r wx wy _ _ <<<"$bounds"
+        preview="$((wx + 30)),$((wy + 335)),500,175"
+        screencapture -x -R"$preview" "$TOOLS/preview-1.png"
+        sleep 0.4
+        screencapture -x -R"$preview" "$TOOLS/preview-2.png"
+        first=$("$TOOLS/image-stats" "$TOOLS/preview-1.png")
+        second=$("$TOOLS/image-stats" "$TOOLS/preview-2.png")
+        note "プレビュー: $first / $second"
+        dark=$(sed -E 's/.*dark=([0-9.]+).*/\1/' <<<"$first")
+        if ! awk -v v="$dark" 'BEGIN { exit !(v >= 0.001) }'; then
+            # 窓が前面にないせいかを見分けるため、タイトルをクリックしてからもう一度撮る
+            IFS=, read -r _ _ ww _ <<<"$bounds"
+            "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)) || true
+            sleep 1
+            screencapture -x -R"$preview" "$TOOLS/preview-clicked.png"
+            note "クリックしたあとのプレビュー: $("$TOOLS/image-stats" "$TOOLS/preview-clicked.png")"
+            { log show --last 5m --style compact --predicate 'subsystem == "local.jellycursor"' | grep DEBUG || true; } | while read -r line; do note "  $line"; done
+            fail "動きのプレビューに何も描かれていない"
+        fi
+        [ "${first##*checksum=}" != "${second##*checksum=}" ] || fail "動きのプレビューが止まっている"
+    fi
     quit
 done
 
@@ -193,20 +238,15 @@ note "終了したあとは本物のカーソルが見えている"
 # Finder などが使う .app のアイコン（起動してしばらくたってから）
 note "$("$TOOLS/diagnose" JellyCursor "$APP" | grep "bundle icon" || echo "bundle icon: 読めない")"
 
+# 起動や状態の変化の記録が残っていて、あとから Console.app や log show で見られること
+log show --last 15m --style compact --predicate 'subsystem == "local.jellycursor"' >"$TOOLS/log.txt" 2>&1 || true
+entries=$(grep -c "local.jellycursor" "$TOOLS/log.txt" || true)
+note "残っている記録: ${entries} 件"
+{ grep "local.jellycursor" "$TOOLS/log.txt" || true; } | tail -4 | while read -r line; do note "  $line"; done
+[ "$entries" -gt 0 ] || fail "記録が残っていない"
+grep "DEBUG" "$TOOLS/log.txt" | head -20 || true
+
 if ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i jellycursor; then
     fail "クラッシュの記録がある"
 fi
 ls -la "$OUT"
-
-# 成果物を取り出せない環境でも見られるよう、画像を base64 でログにも出す。画面全体は大きいので縮めた JPEG にする
-# 設定画面の各タブは成果物にだけ入れ、ログには、そのほかの画像を出す
-sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/screen.png" --out "$TOOLS/screen.jpg" >/dev/null
-[ -f "$OUT/menu-screen.png" ] && sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/menu-screen.png" --out "$TOOLS/menu-screen.jpg" >/dev/null
-for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
-    [ -f "$image" ] || continue
-    echo "BEGIN-IMAGE $(basename "$image")"
-    base64 -b 100 -i "$image"
-    echo "END-IMAGE"
-done
-echo "===== まとめ ====="
-cat "$SUMMARY"

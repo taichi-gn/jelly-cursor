@@ -31,7 +31,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         state.safeMode = NSEvent.modifierFlags.contains(.shift)
         state.canHideCursor = RealCursor.allowBackgroundControl()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "開発版"
-        logger.info("起動 \(version, privacy: .public) セーフモード=\(self.state.safeMode) 本物を隠せる=\(self.state.canHideCursor)")
+        logger.notice("起動 \(version, privacy: .public) セーフモード=\(self.state.safeMode) 本物を隠せる=\(self.state.canHideCursor)")
         engine = CursorEngine(canHideCursor: state.canHideCursor, motion: MotionParameters(settings.values.motion),
                               cursorKinds: settings.values.cursorKinds)
         setUpSignalHandlers()
@@ -52,7 +52,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         settings.onChange = { [weak self] old in self?.settingsChanged(from: old) }
         system.onChange = { [weak self] in self?.update() }
         system.onNeedsRebuild = { [weak self] in
-            logger.info("スリープ復帰・ロック解除・画面構成の変化のあとで作り直す")
+            logger.notice("スリープ復帰・ロック解除・画面構成の変化のあとで作り直す")
             self?.engine?.restart()
         }
         system.start()
@@ -88,7 +88,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         guard let id = Bundle.main.bundleIdentifier else { return }
         let me = ProcessInfo.processInfo.processIdentifier
         for other in NSRunningApplication.runningApplications(withBundleIdentifier: id) where other.processIdentifier != me {
-            logger.info("先に動いていた JellyCursor（pid \(other.processIdentifier)）を終わらせる")
+            logger.notice("先に動いていた JellyCursor（pid \(other.processIdentifier)）を終わらせる")
             other.terminate()
         }
     }
@@ -111,7 +111,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         system.watchesFullScreen = settings.values.pauseInFullScreen && state.isEnabled(in: settings)
         let activity = Activity(settings: settings.values, conditions: system.conditions, safeMode: state.safeMode)
         if activity != state.activity {
-            logger.info("状態: \(activity.summary.isEmpty ? String(describing: activity) : activity.summary, privacy: .public)")
+            logger.notice("状態: \(activity.summary.isEmpty ? String(describing: activity) : activity.summary, privacy: .public)")
         }
         if activity.isRunning {
             engine.start()
