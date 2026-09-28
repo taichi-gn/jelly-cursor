@@ -62,8 +62,12 @@ defaults delete local.jellycursor 2>/dev/null || true
 launch
 bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "はじめての起動で設定画面が開かなかった"
 screencapture -x -R"$bounds" "$OUT/welcome.png"
-# 画面全体も撮る（設定画面を開いている間は、Dock にアイコンが出る）
+# 画面全体も撮る（設定画面を開いている間は、Dock にアイコンが出る）。
+# Dock のアイコンは読み込みに時間がかかることがあるので、しばらくたってから Dock のあたりだけをもう一度撮る
 screencapture -x "$OUT/screen.png"
+sleep 15
+read -r _ _ screen_width screen_height <<<"$("$TOOLS/diagnose" JellyCursor | grep "screen size")"
+screencapture -x -R"0,$((screen_height - 80)),$screen_width,80" "$OUT/dock-later.png" || note "Dock を撮れなかった"
 quit
 
 # ここからは案内を出さない
@@ -187,7 +191,7 @@ ls -la "$OUT"
 # 設定画面の各タブは成果物にだけ入れ、ログには、そのほかの画像を出す
 sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/screen.png" --out "$TOOLS/screen.jpg" >/dev/null
 [ -f "$OUT/menu-screen.png" ] && sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/menu-screen.png" --out "$TOOLS/menu-screen.jpg" >/dev/null
-for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
+for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-later.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
     [ -f "$image" ] || continue
     echo "BEGIN-IMAGE $(basename "$image")"
     base64 -b 100 -i "$image"

@@ -11,6 +11,9 @@ if let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGCursorIsVisibl
     print("cursor visible: \(unsafeBitCast(symbol, to: Int32Getter.self)() != 0)")
 }
 print("frontmost: \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "なし")")
+if let screen = NSScreen.screens.first {
+    print("screen size: \(Int(screen.frame.width)) \(Int(screen.frame.height))")
+}
 // 2つ目の引数に .app の場所を渡すと、Finder などが使うアイコンの真ん中の色を出す（JellyCursor のアイコンなら紫がかる）
 if CommandLine.arguments.count > 2 {
     let icon = NSWorkspace.shared.icon(forFile: CommandLine.arguments[2])
