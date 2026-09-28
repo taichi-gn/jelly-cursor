@@ -9,6 +9,7 @@ mkdir -p "$OUT" "$TOOLS"
 swiftc -O .github/scripts/window-bounds.swift -o "$TOOLS/window-bounds"
 swiftc -O .github/scripts/move-mouse.swift -o "$TOOLS/move-mouse"
 swiftc -O .github/scripts/diagnose.swift -o "$TOOLS/diagnose"
+swiftc -O .github/scripts/press-key.swift -o "$TOOLS/press-key"
 
 launch() {
     open -n "$APP" --args "$@"
@@ -50,6 +51,36 @@ wait "$mover"
 sleep 0.12
 screencapture -x -R"380,180,440,440" "$OUT/stopping.png"
 "$TOOLS/diagnose" JellyCursor
+quit
+
+# ショートカット（⌃⌥⌘J）でオフにすると本物のカーソルが見えて描く窓が消え、もう一度押すと戻ること。
+# キー入力を送る許可が無い Mac では確かめられないので飛ばす
+settings='{"pauseWhenReduceMotion": false, "pauseOnLowPower": false, "shortcut": {"keyCode": 38, "modifiers": 11, "keyLabel": "J"}}'
+defaults write local.jellycursor settings -data "$(printf '%s' "$settings" | xxd -p | tr -d '\n')"
+launch
+"$TOOLS/diagnose" JellyCursor
+set +e
+"$TOOLS/press-key" 38 control,option,command
+pressed=$?
+set -e
+if [ "$pressed" -eq 0 ]; then
+    sleep 1
+    "$TOOLS/diagnose" JellyCursor | tee "$TOOLS/after-shortcut.txt"
+    if ! grep -q "cursor visible: true" "$TOOLS/after-shortcut.txt" || grep -q "layer=2147483630" "$TOOLS/after-shortcut.txt"; then
+        echo "ショートカットでオフにならなかった"
+        exit 1
+    fi
+    "$TOOLS/press-key" 38 control,option,command
+    sleep 1
+    "$TOOLS/diagnose" JellyCursor | tee "$TOOLS/after-shortcut-again.txt"
+    if ! grep -q "layer=2147483630" "$TOOLS/after-shortcut-again.txt"; then
+        echo "ショートカットでオンに戻らなかった"
+        exit 1
+    fi
+    echo "ショートカットの確認: 通過"
+else
+    echo "キー入力を送る許可が無いので、ショートカットの確認は飛ばした"
+fi
 quit
 
 # killall（SIGTERM）で終わらせたあとは、本物のカーソルが見えていること
