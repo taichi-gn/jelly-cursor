@@ -1,6 +1,12 @@
+<img src="docs/images/icon.png" width="96" alt="">
+
 # JellyCursor
 
 動かすと伸びて、止めると揺れて戻る macOS のマウスカーソル。メニューバーに常駐します。
+
+![矢印と I 字の動き](docs/images/motion.gif)
+
+<sub>アプリと同じ動きの計算（`JellyCursorCore`）で描いたもの。左が矢印、右が文字の上の I 字</sub>
 
 - **矢印**: 動いた道筋に沿って伸び、進行方向を向く。止めると振り子のように1回だけ行き過ぎて、左上向きに戻る
 - **文字の上の I 字**: 横に振ると太く、縦に振ると伸び、斜めに振るとその向きに傾く
@@ -34,7 +40,11 @@ make test      # 試験を回す
 | 本物のカーソルに戻す | オフにして、本物のカーソルを確実に表示する |
 | 設定…（⌘,） | 設定画面を開く |
 
+<img src="docs/images/menu.png" width="366" alt="メニュー">
+
 ### 設定画面
+
+<img src="docs/images/settings-motion.png" width="420" alt="設定画面の動きのタブ">
 
 - **一般**: 有効、ログイン時に起動、メニューバーのアイコン、オン・オフのショートカット（⌘・⌃・⌥のうち2つ以上との組み合わせか、ファンクションキー）、初期状態に戻す
 - **動き**: プリセットと「伸び」「弾み」の強さ（どちらも 100% が標準）。プレビューで動きを確かめられます
@@ -74,6 +84,6 @@ make test      # 試験を回す
 試験は swift-testing で書いています。`JellyCursorKitTests` は macOS でだけ回り、本物のカーソルの画像の見分けや、アイコンの書き出しなどを確かめます。`GoldenMotionTests` は、決まったマウスの動きを流したときの形が、分割前（`efbc96a`）のコードで記録した値（`Tests/JellyCursorCoreTests/Resources/golden-motion.json`）と一致することを確かめます。動きの標準を意図して変えたときは、`RECORD_GOLDEN=1 swift test --filter GoldenMotionTests` で記録し直してください。
 
 CI（GitHub Actions）は、`JellyCursorCore` を Linux で、アプリ全体を macOS で、警告をエラーとして作って試験します。
-main 以外のブランチへの push で、いちばん新しいコミットのメッセージに `[screenshots]` を含めると、macOS でアプリを実際に起動して、はじめての起動の案内・設定画面の各タブ・メニュー・動かしている間のカーソルを撮り、本物のカーソルの出し入れ・ショートカット・⌘W で閉じたあとの前面・止まっている間と動かしている間の CPU も確かめます（成果物の `screenshots`）。
+main 以外のブランチへの push で、いちばん新しいコミットのメッセージに `[screenshots]` を含めると、macOS でアプリを実際に起動して、はじめての起動の案内・設定画面の各タブ・メニュー・動かしている間のカーソルを撮り、本物のカーソルの出し入れ・ショートカット・⌘W で閉じたあとの前面・Dock のアイコン・止まっている間と動かしている間の CPU も確かめます（成果物の `screenshots`）。
 
 起動時の `-OpenSettings <タブ>`（general・motion・cursors・autoPause・about）と `-OpenMenu YES` は、画面を撮るための指定です（`open JellyCursor.app --args -OpenSettings motion`）。
