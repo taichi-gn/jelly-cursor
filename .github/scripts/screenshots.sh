@@ -76,23 +76,19 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
-# メニューバーのアイコンをクリックしてメニューを開く
-launch
-if status=$("$TOOLS/window-bounds" JellyCursor 25); then
-    IFS=, read -r sx sy sw sh <<<"$status"
-    if "$TOOLS/click" $((sx + sw / 2)) $((sy + sh / 2)); then
-        sleep 1
-        if menu=$("$TOOLS/window-bounds" JellyCursor 101); then
-            screencapture -x -R"$menu" "$OUT/menu.png"
-            note "メニュー: $menu"
-        else
-            note "メニューが開かなかった"
-        fi
-        "$TOOLS/press-key" 53 || true
-    fi
+# メニューバーのメニューを開いて撮る。macOS 26 ではメニューバーのアイコンが窓の一覧に出ず、
+# クリックする場所が分からないので、起動時の指定でアプリに開かせる
+launch -OpenMenu YES
+sleep 1
+"$TOOLS/diagnose" JellyCursor | grep "window layer" || true
+if menu=$("$TOOLS/window-bounds" JellyCursor 101); then
+    screencapture -x -R"$menu" "$OUT/menu.png"
+    note "メニュー: $menu"
 else
-    note "メニューバーのアイコンが見つからなかった"
+    screencapture -x "$OUT/menu-screen.png"
+    note "メニューの窓が見つからなかったので、画面全体を撮った"
 fi
+"$TOOLS/press-key" 53 || true
 quit
 
 # 設定画面をクリックしてから ⌘W で閉じたら、窓が消えて、前面が開く前のアプリに戻ること。
@@ -185,8 +181,10 @@ fi
 ls -la "$OUT"
 
 # 成果物を取り出せない環境でも見られるよう、画像を base64 でログにも出す。画面全体は大きいので縮めた JPEG にする
+# 設定画面の各タブは成果物にだけ入れ、ログには、そのほかの画像を出す
 sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/screen.png" --out "$TOOLS/screen.jpg" >/dev/null
-for image in "$TOOLS/screen.jpg" "$OUT"/[!s]*.png "$OUT"/s[!c]*.png; do
+[ -f "$OUT/menu-screen.png" ] && sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/menu-screen.png" --out "$TOOLS/menu-screen.jpg" >/dev/null
+for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
     [ -f "$image" ] || continue
     echo "BEGIN-IMAGE $(basename "$image")"
     base64 -b 100 -i "$image"

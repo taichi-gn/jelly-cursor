@@ -62,6 +62,12 @@ package final class AppController: NSObject, NSApplicationDelegate {
             openSettings(tab: SettingsTab(rawValue: name))
         }
         welcomeOnFirstLaunch()
+        // 起動時に -OpenMenu YES を渡すと、メニューバーのメニューを開く（見た目を撮るため）
+        if UserDefaults.standard.bool(forKey: "OpenMenu") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                MainActor.assumeIsolated { self.statusMenu?.open() }
+            }
+        }
     }
 
     // はじめて起動したときは、メニューバーのアイコンに気づけるよう、案内つきで設定画面を開く。

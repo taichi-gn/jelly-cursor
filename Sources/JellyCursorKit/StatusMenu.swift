@@ -36,6 +36,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         set { item.isVisible = newValue }
     }
 
+    // メニューを開く（-OpenMenu YES で起動したとき。メニューの見た目を撮るため）
+    func open() {
+        item.button?.performClick(nil)
+    }
+
     // アイコンを今の状態に合わせる。一時停止中は薄く、本物のカーソルを隠せないときは警告の形にする
     func update() {
         let icon = StatusIcon(activity: state.activity, canHideCursor: state.canHideCursor)
