@@ -10,6 +10,7 @@ swiftc -O .github/scripts/window-bounds.swift -o "$TOOLS/window-bounds"
 swiftc -O .github/scripts/move-mouse.swift -o "$TOOLS/move-mouse"
 swiftc -O .github/scripts/diagnose.swift -o "$TOOLS/diagnose"
 swiftc -O .github/scripts/press-key.swift -o "$TOOLS/press-key"
+swiftc -O .github/scripts/click.swift -o "$TOOLS/click"
 
 launch() {
     open -n "$APP" --args "$@"
@@ -37,18 +38,30 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
-# ⌘W で設定画面を閉じたら、窓が消えて、前面が開く前のアプリに戻ること（キー入力を送れるときだけ）
-"$TOOLS/diagnose" JellyCursor | grep frontmost
+# 設定画面をクリックしてから ⌘W で閉じたら、窓が消えて、前面が開く前のアプリに戻ること（イベントを送れるときだけ）。
+# 起動しただけでは前面になれない（macOS 14 からは、ユーザーの操作なしに前面を取れない）ので、実際の使い方と同じくクリックする
+before=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
+echo "開く前: $before"
 launch -OpenSettings general
-"$TOOLS/diagnose" JellyCursor | grep frontmost
-if "$TOOLS/press-key" 13 command; then
+IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
+if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
     sleep 1
-    "$TOOLS/diagnose" JellyCursor | grep frontmost
+    echo "クリックしたあと: $("$TOOLS/diagnose" JellyCursor | grep frontmost)"
+    "$TOOLS/press-key" 13 command
+    sleep 1
+    after=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
+    echo "閉じたあと: $after"
     if "$TOOLS/window-bounds" JellyCursor 2>/dev/null; then
         echo "⌘W で設定画面が閉じなかった"
         exit 1
     fi
-    echo "⌘W で設定画面が閉じた"
+    if [ "$after" = "frontmost: JellyCursor" ]; then
+        echo "設定画面を閉じても JellyCursor が前面に残った"
+        exit 1
+    fi
+    echo "⌘W で設定画面が閉じ、前面が戻った"
+else
+    echo "イベントを送る許可が無いので、⌘W の確認は飛ばした"
 fi
 quit
 
