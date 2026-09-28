@@ -11,7 +11,8 @@ package final class AppController: NSObject, NSApplicationDelegate {
     private var engine: CursorEngine?
     private var statusMenu: StatusMenu?
     private var signalSources: [DispatchSourceSignal] = []
-    private lazy var settingsWindow = SettingsWindowController(settings: settings, state: state, actions: actions)
+    private lazy var settingsWindow = SettingsWindowController(
+        settings: settings, state: state, actions: actions, previousApp: { [weak self] in self?.system.lastOtherApp })
 
     package override init() {
         super.init()
@@ -25,6 +26,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
     }
 
     package func applicationDidFinishLaunching(_ notification: Notification) {
+        quitOtherInstances()
         // Shift を押しながら起動したら、何も隠さずに止めた状態で始める（おかしくなったときの逃げ道）
         state.safeMode = NSEvent.modifierFlags.contains(.shift)
         state.canHideCursor = RealCursor.allowBackgroundControl()
@@ -54,6 +56,16 @@ package final class AppController: NSObject, NSApplicationDelegate {
         // 起動時に -OpenSettings <タブ> を渡すと、そのタブで設定画面を開く（open JellyCursor.app --args -OpenSettings motion）
         if let name = UserDefaults.standard.string(forKey: "OpenSettings") {
             openSettings(tab: SettingsTab(rawValue: name))
+        }
+    }
+
+    // 別の場所に置いた JellyCursor（作り直したものと、アプリケーションフォルダに入れたものなど）が動いていたら終わらせ、
+    // 今開いたほうで動く。2つ動くと、どちらも本物のカーソルを隠して絵を描くので、重なって見える
+    private func quitOtherInstances() {
+        guard let id = Bundle.main.bundleIdentifier else { return }
+        let me = ProcessInfo.processInfo.processIdentifier
+        for other in NSRunningApplication.runningApplications(withBundleIdentifier: id) where other.processIdentifier != me {
+            other.terminate()
         }
     }
 

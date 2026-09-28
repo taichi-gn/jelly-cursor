@@ -107,6 +107,8 @@ private struct KeyPress: Sendable {
     init(_ event: NSEvent) {
         keyCode = event.keyCode
         modifiers = KeyModifiers(event.modifierFlags.intersection(.deviceIndependentFlagsMask))
-        characters = event.charactersIgnoringModifiers
+        // ⇧を押していても⇧を押す前の文字（⇧⌘1 なら 1）で表す
+        let plain = event.characters(byApplyingModifiers: [])
+        characters = plain?.isEmpty == false ? plain : event.charactersIgnoringModifiers
     }
 }

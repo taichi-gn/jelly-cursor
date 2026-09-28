@@ -140,8 +140,9 @@ final class SystemMonitor {
     private func frontAppChanged(_ app: RunningApp?) {
         frontPID = app?.pid
         conditions.frontApp = app?.identity
-        if let app, app.pid != ProcessInfo.processInfo.processIdentifier, let identity = app.identity {
-            lastOtherApp = identity
+        // バンドル ID の無いアプリが前面に来たら nil にして、前のアプリの名前をメニューに出さない
+        if let app, app.pid != ProcessInfo.processInfo.processIdentifier {
+            lastOtherApp = app.identity
         }
         // 前のアプリについての問い合わせの結果は捨てて、調べ直す。結果が出るまでは前の値のままにして、
         // 全画面のアプリどうしを切り替えたときに、一瞬だけ動き出して本物のカーソルを隠さないようにする
@@ -176,7 +177,10 @@ final class SystemMonitor {
             setFullScreen(false)
             return
         }
-        let screens = NSScreen.screens.map { ScreenInfo(frame: $0.frame, safeAreaTop: $0.safeAreaInsets.top) }
+        // 「ディスプレイごとに個別の操作スペース」がオフだと、メニューバーは1枚目の画面にしか無く、
+        // ほかの画面ではメニューバーの有無で全画面かを見分けられないので、1枚目だけを見る
+        let candidates = NSScreen.screensHaveSeparateSpaces ? NSScreen.screens : Array(NSScreen.screens.prefix(1))
+        let screens = candidates.map { ScreenInfo(frame: $0.frame, safeAreaTop: $0.safeAreaInsets.top) }
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let menuBarLayer = Int(CGWindowLevelForKey(.mainMenuWindow))
         let generation = fullScreenGeneration

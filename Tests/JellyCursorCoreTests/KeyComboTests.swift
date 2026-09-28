@@ -17,13 +17,23 @@ import Testing
         #expect(KeyCombo(keyCode: 0, modifiers: [.control, .option, .command], keyLabel: "A").carbonModifiers == 0x1900)
     }
 
+    // ⌘・⌃・⌥のうち2つ以上か、ファンクションキー
     @Test func validity() {
-        #expect(!KeyCombo(keyCode: 0x26, modifiers: [], characters: "j").isValid)
-        #expect(!KeyCombo(keyCode: 0x26, modifiers: .shift, characters: "j").isValid)
-        #expect(!KeyCombo(keyCode: 0x26, modifiers: .option, characters: "j").isValid)
-        #expect(!KeyCombo(keyCode: 0x26, modifiers: [.option, .shift], characters: "j").isValid)
-        #expect(KeyCombo(keyCode: 0x26, modifiers: [.option, .command], characters: "j").isValid)
-        #expect(KeyCombo(keyCode: 0x26, modifiers: .control, characters: "j").isValid)
+        func combo(_ modifiers: KeyModifiers, key: UInt16 = 0x26) -> KeyCombo {
+            KeyCombo(keyCode: key, modifiers: modifiers, characters: "j")
+        }
+        #expect(!combo([]).isValid)
+        #expect(!combo(.shift).isValid)
+        #expect(!combo(.option).isValid)
+        #expect(!combo([.option, .shift]).isValid)
+        #expect(!combo(.control).isValid)
+        // ⌘W・⌘Q・⌘⇧S のようなアプリのショートカットは取らない
+        #expect(!combo(.command, key: 0x0D).isValid)
+        #expect(!combo([.command, .shift]).isValid)
+        #expect(combo([.option, .command]).isValid)
+        #expect(combo([.control, .option]).isValid)
+        #expect(combo([.control, .command]).isValid)
+        #expect(combo([.control, .option, .command]).isValid)
         // ファンクションキーは修飾キーなしでもよい
         #expect(KeyCombo(keyCode: 0x60, modifiers: [], characters: nil).isValid)
     }
@@ -34,8 +44,15 @@ import Testing
         #expect(KeyCombo.label(keyCode: 0x7E, characters: nil) == "↑")
         #expect(KeyCombo.label(keyCode: 0x2C, characters: "/") == "/")
         #expect(KeyCombo.label(keyCode: 0x0B, characters: "") == "#11")
+        // テンキーの Enter・Clear・Help と、見えない文字
+        #expect(KeyCombo.label(keyCode: 0x4C, characters: "\u{03}") == "⌤")
+        #expect(KeyCombo.label(keyCode: 0x47, characters: "\u{F739}") == "⌧")
+        #expect(KeyCombo.label(keyCode: 0x72, characters: "\u{F746}") == "Help")
+        #expect(KeyCombo.label(keyCode: 0x6E, characters: "\u{10}") == "#110")
+        #expect(KeyCombo.label(keyCode: 0x69, characters: "\u{F710}") == "F13")
         #expect(KeyCombo(keyCode: 0x31, modifiers: .control, characters: " ").menuKeyEquivalent == nil)
         #expect(KeyCombo(keyCode: 0x12, modifiers: [.command, .shift], characters: "!").menuKeyEquivalent == nil)
+        #expect(KeyCombo(keyCode: 0x12, modifiers: [.command, .shift], characters: "1").menuKeyEquivalent == "1")
         #expect(KeyCombo(keyCode: 0x12, modifiers: .command, characters: "1").menuKeyEquivalent == "1")
         #expect(KeyCombo(keyCode: 0x26, modifiers: [.command, .shift], characters: "J").menuKeyEquivalent == "j")
     }

@@ -11,18 +11,22 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let actions: AppActions
     private let navigation = SettingsNavigation()
     private let recorder: KeyRecorder
+    // 設定画面を開く前に前面にあったアプリ。閉じたらそこへ戻す
+    private let previousApp: () -> AppIdentity?
     private var window: NSWindow?
 
-    init(settings: AppSettings, state: AppState, actions: AppActions) {
+    init(settings: AppSettings, state: AppState, actions: AppActions, previousApp: @escaping () -> AppIdentity?) {
         self.settings = settings
         self.state = state
         self.actions = actions
+        self.previousApp = previousApp
         recorder = KeyRecorder(onRecordingChange: actions.suspendShortcut)
     }
 
     // メニューバーだけのアプリ（.accessory）のままだと前面に出せないので、開いている間だけふつうのアプリにする
     func show(tab: SettingsTab? = nil) {
         if let tab { navigation.tab = tab }
+        navigation.isWindowOpen = true
         let window = self.window ?? makeWindow()
         self.window = window
         NSApp.setActivationPolicy(.regular)
@@ -30,9 +34,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    // メニューバーだけのアプリに戻す。窓が無くても JellyCursor が前面に残ってキー入力を受け取れなくなるので、
+    // 開く前に使っていたアプリへ前面を返す
     func windowWillClose(_ notification: Notification) {
         recorder.stop()
+        navigation.isWindowOpen = false
         NSApp.setActivationPolicy(.accessory)
+        guard let id = previousApp()?.bundleID,
+              let app = NSRunningApplication.runningApplications(withBundleIdentifier: id).first else { return }
+        NSApp.yieldActivation(to: app)
+        app.activate(from: .current, options: [])
     }
 
     // ほかのアプリへ移ったら、ショートカットの記録をやめて元に戻す

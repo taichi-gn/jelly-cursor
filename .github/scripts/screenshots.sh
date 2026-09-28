@@ -37,12 +37,32 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
+# ⌘W で設定画面を閉じたら、窓が消えて、前面が開く前のアプリに戻ること（キー入力を送れるときだけ）
+"$TOOLS/diagnose" JellyCursor | grep frontmost
+launch -OpenSettings general
+"$TOOLS/diagnose" JellyCursor | grep frontmost
+if "$TOOLS/press-key" 13 command; then
+    sleep 1
+    "$TOOLS/diagnose" JellyCursor | grep frontmost
+    if "$TOOLS/window-bounds" JellyCursor 2>/dev/null; then
+        echo "⌘W で設定画面が閉じなかった"
+        exit 1
+    fi
+    echo "⌘W で設定画面が閉じた"
+fi
+quit
+
 # 円を描いて速く動かしている間と、止めた直後（戻る揺れ）の矢印。
 # CI の Mac は「視差効果を減らす」がオンで、初期設定では止まるので、その設定だけ外して撮る
 settings='{"pauseWhenReduceMotion": false, "pauseOnLowPower": false}'
 defaults write local.jellycursor settings -data "$(printf '%s' "$settings" | xxd -p | tr -d '\n')"
 launch
-"$TOOLS/diagnose" JellyCursor
+# 描いている間は、本物のカーソルが隠れていること
+"$TOOLS/diagnose" JellyCursor | tee "$TOOLS/drawing.txt"
+if ! grep -q "cursor visible: false" "$TOOLS/drawing.txt"; then
+    echo "描いている間も本物のカーソルが見えている"
+    exit 1
+fi
 "$TOOLS/move-mouse" 600 400 150 2.0 &
 mover=$!
 sleep 1.2
@@ -83,7 +103,8 @@ else
 fi
 quit
 
-# killall（SIGTERM）で終わらせたあとは、本物のカーソルが見えていること
+# killall（SIGTERM）で終わらせたあとは、本物のカーソルが見えていること。
+# プロセスが終われば macOS も戻すので、終わり方の全体を確かめるもので、シグナルの受け取り方だけを確かめるものではない
 "$TOOLS/diagnose" JellyCursor | tee "$TOOLS/after-quit.txt"
 if ! grep -q "cursor visible: true" "$TOOLS/after-quit.txt"; then
     echo "終了したあとも本物のカーソルが見えていない"

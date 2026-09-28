@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import JellyCursorCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -12,6 +13,8 @@ enum SettingsTab: String, CaseIterable {
 @Observable
 final class SettingsNavigation {
     var tab = SettingsTab.general
+    // 窓を閉じている間は、プレビューを描き直さない
+    var isWindowOpen = false
 }
 
 struct SettingsView: View {
@@ -26,7 +29,7 @@ struct SettingsView: View {
             GeneralPane(settings: settings, state: state, actions: actions, recorder: recorder)
                 .tabItem { Label("一般", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
-            MotionPane(settings: settings)
+            MotionPane(settings: settings, isPreviewPaused: !navigation.isWindowOpen)
                 .tabItem { Label("動き", systemImage: "wand.and.rays") }
                 .tag(SettingsTab.motion)
             CursorsPane(settings: settings)
@@ -95,7 +98,7 @@ private struct GeneralPane: View {
                 if state.shortcutFailed {
                     Note("このショートカットはほかのアプリが使っているため登録できませんでした", color: .red)
                 } else {
-                    Note("どのアプリを使っているときでも効きます。⌘か⌃と組み合わせてください（ファンクションキーは単独でも使えます）")
+                    Note("どのアプリを使っているときでも効きます。⌘・⌃・⌥のうち2つ以上と組み合わせてください（ファンクションキーは単独でも使えます）")
                 }
             }
 
@@ -105,6 +108,10 @@ private struct GeneralPane: View {
         }
         .formStyle(.grouped)
         .onAppear { loginItem.refresh() }
+        // システム設定で許可して戻ってきたときにも読み直す
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginItem.refresh()
+        }
         .confirmationDialog("すべての設定を初期状態に戻しますか？", isPresented: $confirmsReset) {
             Button("初期状態に戻す", role: .destructive) { settings.reset() }
         } message: {
@@ -116,6 +123,7 @@ private struct GeneralPane: View {
 // 動き: プリセット・強さ・プレビュー
 private struct MotionPane: View {
     @Bindable var settings: AppSettings
+    let isPreviewPaused: Bool
 
     var body: some View {
         Form {
@@ -142,7 +150,7 @@ private struct MotionPane: View {
             }
 
             Section("プレビュー") {
-                MotionPreview(style: settings.values.motion)
+                MotionPreview(style: settings.values.motion, isPaused: isPreviewPaused)
                     .frame(height: 170)
                 Note("標準は、これまでの JellyCursor と同じ動きです")
             }
@@ -222,6 +230,8 @@ private struct CursorKindToggle: View {
 // 自動で止める: 視差効果・低電力・全画面・除外するアプリ
 private struct AutoPausePane: View {
     @Bindable var settings: AppSettings
+    // 起動中のアプリ。アプリが起動・終了したら読み直す
+    @State private var runningApps: [ExcludedApp] = []
 
     var body: some View {
         Form {
@@ -255,7 +265,8 @@ private struct AutoPausePane: View {
                 }
                 HStack {
                     Menu("起動中のアプリから追加") {
-                        ForEach(runningApps(), id: \.bundleID) { app in
+                        ForEach(runningApps.filter { !settings.values.isExcluded(bundleID: $0.bundleID) },
+                                id: \.bundleID) { app in
                             Button(app.name) { add(app) }
                         }
                     }
@@ -265,17 +276,23 @@ private struct AutoPausePane: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { refreshRunningApps() }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didLaunchApplicationNotification)) { _ in
+            refreshRunningApps()
+        }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didTerminateApplicationNotification)) { _ in
+            refreshRunningApps()
+        }
     }
 
-    // Dock に出ているふつうのアプリのうち、まだリストに無いもの
-    private func runningApps() -> [ExcludedApp] {
+    // Dock に出ているふつうのアプリ（JellyCursor 以外）
+    private func refreshRunningApps() {
         let own = Bundle.main.bundleIdentifier
         let apps = NSWorkspace.shared.runningApplications.compactMap { app -> ExcludedApp? in
-            guard app.activationPolicy == .regular, let id = app.bundleIdentifier, id != own,
-                  !settings.values.isExcluded(bundleID: id) else { return nil }
+            guard app.activationPolicy == .regular, let id = app.bundleIdentifier, id != own else { return nil }
             return ExcludedApp(bundleID: id, name: app.localizedName ?? id)
         }
-        return Dictionary(apps.map { ($0.bundleID, $0) }, uniquingKeysWith: { a, _ in a }).values
+        runningApps = Dictionary(apps.map { ($0.bundleID, $0) }, uniquingKeysWith: { a, _ in a }).values
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 

@@ -21,10 +21,12 @@ package struct KeyCombo: Codable, Equatable, Hashable, Sendable {
     // メニューと同じ ⌃⌥⇧⌘ の順
     package var displayString: String { modifiers.symbols + keyLabel }
 
-    // 文字入力とぶつからないよう、⌘か⌃を含むか、ファンクションキーであること。
-    // ⌥だけ（⌥⇧も）の組み合わせは é や © などの文字を打つのに使うので、どのアプリでも効くショートカットにはしない
+    // どのアプリでも効くショートカットにするので、ほかの操作とぶつからないよう、⌘・⌃・⌥のうち2つ以上を含むか、
+    // ファンクションキーであること。⌘だけ（⌘W・⌘Q など）はアプリのメニューと、⌃だけ（⌃A・⌃E など）は文字の編集と、
+    // ⌥だけ（⌥E など）は é や © などの文字の入力とぶつかる
     package var isValid: Bool {
-        !modifiers.isDisjoint(with: [.command, .control]) || Self.functionKeys[keyCode] != nil
+        Self.functionKeys[keyCode] != nil
+            || [KeyModifiers.command, .control, .option].filter { modifiers.contains($0) }.count >= 2
     }
 
     // RegisterEventHotKey に渡す修飾キー（cmdKey・shiftKey・optionKey・controlKey）
@@ -38,24 +40,28 @@ package struct KeyCombo: Codable, Equatable, Hashable, Sendable {
     }
 
     // メニューの項目にキーとして付けられる1文字（小文字）。記号で表すキーは nil。
-    // ⇧と数字・記号の組み合わせは、記録した文字が⇧を押したあとの文字（1 なら !）になっていて、
-    // メニューでは ⇧⌘! のように⇧が二重に効いた表示になるので付けない
+    // ⇧と記号の組み合わせは、⇧を押したあとの文字（! など）で記録したものだと、メニューでは ⇧⌘! のように
+    // ⇧が二重に効いた表示になるので付けない
     package var menuKeyEquivalent: String? {
         guard Self.specialKeys[keyCode] == nil, Self.functionKeys[keyCode] == nil,
               keyLabel.count == 1, let scalar = keyLabel.unicodeScalars.first else { return nil }
-        if modifiers.contains(.shift) && !CharacterSet.letters.contains(scalar) { return nil }
+        if modifiers.contains(.shift) && !CharacterSet.alphanumerics.contains(scalar) { return nil }
         return keyLabel.lowercased()
     }
 
+    // characters は修飾キーを除いたときの文字。見えない文字（制御文字や、矢印などの特殊キーの私用領域の文字）は、
+    // キーコードで表す
     package static func label(keyCode: UInt16, characters: String?) -> String {
         if let name = specialKeys[keyCode] ?? functionKeys[keyCode] { return name }
         let text = (characters ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return text.isEmpty ? "#\(keyCode)" : text
+        let visible = text.unicodeScalars.allSatisfy { $0.value >= 0x20 && $0.value != 0x7F && !(0xE000...0xF8FF).contains($0.value) }
+        return text.isEmpty || !visible ? "#\(keyCode)" : text
     }
 
     private static let specialKeys: [UInt16: String] = [
         0x24: "↩", 0x30: "⇥", 0x31: "Space", 0x33: "⌫", 0x35: "⎋", 0x75: "⌦",
         0x7B: "←", 0x7C: "→", 0x7D: "↓", 0x7E: "↑", 0x73: "↖", 0x77: "↘", 0x74: "⇞", 0x79: "⇟",
+        0x4C: "⌤", 0x47: "⌧", 0x72: "Help",
     ]
 
     private static let functionKeys: [UInt16: String] = [

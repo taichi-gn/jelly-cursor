@@ -6,7 +6,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # 動きの計算と設定のロジック（JellyCursorCore）の試験。安い Linux で先に回す
@@ -15,8 +15,8 @@ jobs:
     container: swift:6.2-noble
     steps:
       - uses: actions/checkout@v5
-      - run: swift build -Xswiftc -warnings-as-errors
-      - run: swift test
+      - run: swift build --build-tests -Xswiftc -warnings-as-errors
+      - run: swift test --skip-build
 
   # アプリ全体（AppKit を使う部分を含む）のビルドと試験
   macos:
@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: swift --version
-      - run: swift build -Xswiftc -warnings-as-errors
-      - run: swift test
+      - run: swift build --build-tests -Xswiftc -warnings-as-errors
+      - run: swift test --skip-build
       - run: make app SWIFT_FLAGS="-Xswiftc -warnings-as-errors"
       - run: plutil -lint JellyCursor.app/Contents/Info.plist && codesign --verify --verbose JellyCursor.app
