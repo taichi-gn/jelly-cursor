@@ -12,7 +12,7 @@ package struct Diagnostics: Sendable {
     package var screens: [String]
     package var settings: SettingsValues
     package var shortcutFailed: Bool
-    // 最近の記録（起動・状態の変化など）。古い順
+    // この起動のあいだの最近の記録（起動・状態の変化など）。古い順
     package var recentLog: [String]
 
     package init(appVersion: String, osVersion: String, activity: Activity, canHideCursor: Bool, safeMode: Bool,

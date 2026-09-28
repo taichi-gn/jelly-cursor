@@ -7,8 +7,6 @@ import SwiftUI
 // 実際のカーソルと同じく、層（CAShapeLayer）を画面の書き換えに合わせて動かす
 struct MotionPreview: NSViewRepresentable {
     let style: MotionStyle
-    // 設定画面の窓を閉じている間は止める
-    let isPaused: Bool
 
     func makeNSView(context: Context) -> MotionPreviewView {
         MotionPreviewView()
@@ -16,7 +14,6 @@ struct MotionPreview: NSViewRepresentable {
 
     func updateNSView(_ view: MotionPreviewView, context: Context) {
         view.style = style
-        view.isPaused = isPaused
     }
 }
 
@@ -32,10 +29,6 @@ final class MotionPreviewView: NSView {
             figures = [Jelly(scale: Self.scale, motion: motion), IBeam(scale: Self.scale, motion: motion)]
             advance(dt: 0)
         }
-    }
-
-    var isPaused = false {
-        didSet { updateLink() }
     }
 
     // 上の段に矢印、下の段に I 字
@@ -77,9 +70,22 @@ final class MotionPreviewView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let window {
+            NotificationCenter.default.addObserver(self, selector: #selector(occlusionChanged),
+                                                   name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        }
         updateScale()
+        updateLink()
+    }
+
+    @objc private func occlusionChanged() {
         updateLink()
     }
 
@@ -94,9 +100,10 @@ final class MotionPreviewView: NSView {
         advance(dt: 0)
     }
 
-    // 窓に載っていて止めていない間だけ、画面の書き換えに合わせて動かす
+    // 窓が画面に見えている間だけ、画面の書き換えに合わせて動かす。
+    // 窓を閉じた・しまった・ほかの窓に隠れた・ほかのタブを開いた間は止める
     private func updateLink() {
-        let running = window != nil && !isPaused
+        let running = window?.occlusionState.contains(.visible) == true
         if running, link == nil {
             let newLink = displayLink(target: self, selector: #selector(tick(_:)))
             newLink.add(to: .main, forMode: .common)

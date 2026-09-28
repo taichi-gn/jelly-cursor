@@ -74,17 +74,22 @@ import Testing
     }
 }
 
-// 診断情報に入れる記録は、この起動のあいだに書いたものを読めること
-@Suite struct RecentLogTests {
-    @Test func readsWhatWasJustLogged() async throws {
-        let message = "試験の記録 \(UUID().uuidString)"
-        logger.notice("\(message, privacy: .public)")
-        // 書いてから読めるようになるまで、少し待つことがある
-        var found = false
-        for _ in 0..<20 where !found {
-            found = recentLogLines(limit: 200).contains { $0.hasSuffix(message) }
-            if !found { try await Task.sleep(for: .milliseconds(100)) }
+// 診断情報に入れる記録は、新しいものから決まった数だけ、古い順に残ること
+@MainActor
+@Suite(.serialized) struct AppLogTests {
+    @Test func keepsTheNewestInOrder() {
+        let tag = UUID().uuidString
+        for i in 0..<40 {
+            AppLog.notice("試験の記録 \(tag) \(i)")
         }
-        #expect(found)
+        let recent = AppLog.recent
+        #expect(recent.count == 30)
+        #expect(recent.first?.hasSuffix("試験の記録 \(tag) 10") == true)
+        #expect(recent.last?.hasSuffix("試験の記録 \(tag) 39") == true)
+    }
+
+    @Test func marksErrors() {
+        AppLog.error("試験のエラー")
+        #expect(AppLog.recent.last?.hasSuffix("エラー: 試験のエラー") == true)
     }
 }

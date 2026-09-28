@@ -127,10 +127,17 @@ for tab in general motion cursors autoPause about; do
     if [ "$tab" = motion ]; then
         # プレビューに矢印と I 字が描かれていて、動いていること。
         # プレビューは道筋の途中で1秒近く止まって見えることがあるので、それより長くあけて3回撮り、どこかで変わっていればよい
-        preview=$(ax_frame local.jellycursor "動きのプレビュー") || fail "動きのプレビューが見つからない"
-        note "プレビューの範囲: $preview"
+        set +e
+        preview=$(ax_frame local.jellycursor "動きのプレビュー")
+        found=$?
+        set -e
+        case "$found" in
+            0) note "プレビューの範囲: $preview" ;;
+            2 | 3) note "アクセシビリティで読めないので、プレビューの確認は飛ばした"; preview="" ;;
+            *) fail "動きのプレビューが見つからない" ;;
+        esac
         checksums=""
-        for shot in 1 2 3; do
+        for shot in ${preview:+1 2 3}; do
             [ "$shot" -eq 1 ] || sleep 1.2
             screencapture -x -R"$preview" "$TOOLS/preview-$shot.png"
             stats=$("$TOOLS/image-stats" "$TOOLS/preview-$shot.png")
@@ -140,7 +147,7 @@ for tab in general motion cursors autoPause about; do
             checksums="$checksums ${stats##*checksum=}"
         done
         different=$(printf '%s\n' $checksums | sort -u | wc -l | tr -d ' ')
-        [ "$different" -gt 1 ] || fail "動きのプレビューが止まっている"
+        [ -z "$preview" ] || [ "$different" -gt 1 ] || fail "動きのプレビューが止まっている"
     fi
     quit
 done
@@ -166,14 +173,19 @@ fi
 quit
 
 # 設定画面をクリックしてから ⌘W で閉じたら、窓が消えて、前面が開く前のアプリに戻ること。
-# 起動しただけでは前面になれない（macOS 14 からは、ユーザーの操作なしに前面を取れない）ので、実際の使い方と同じくクリックする
+# 起動しただけでは前面になれない（macOS 14 からは、ユーザーの操作なしに前面を取れない）ので、実際の使い方と同じくクリックする。
+# 動きのタブで開き、閉じたあとはプレビューが止まって CPU を使わないことも見る
 before=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
 note "開く前: $before"
-launch -OpenSettings general
+launch -OpenSettings motion
+pid=$(pgrep -x JellyCursor)
 IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
 if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
     sleep 1
     note "クリックしたあと: $("$TOOLS/diagnose" JellyCursor | grep frontmost)"
+    start=$(cpu_seconds "$pid")
+    sleep 5
+    note "プレビューを出している間の CPU: $(awk -v a="$start" -v b="$(cpu_seconds "$pid")" 'BEGIN { printf "%.1f", (b - a) / 5 * 100 }')%"
     "$TOOLS/press-key" 13 command
     sleep 1
     after=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
@@ -183,6 +195,11 @@ if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
     fi
     [ "$after" != "frontmost: JellyCursor" ] || fail "設定画面を閉じても JellyCursor が前面に残った"
     note "⌘W で設定画面が閉じ、前面が戻った"
+    start=$(cpu_seconds "$pid")
+    sleep 5
+    closed=$(awk -v a="$start" -v b="$(cpu_seconds "$pid")" 'BEGIN { printf "%.1f", (b - a) / 5 * 100 }')
+    note "閉じたあとの CPU: ${closed}%"
+    awk -v v="$closed" 'BEGIN { exit !(v < 10) }' || fail "設定画面を閉じたあとの CPU が多すぎる: ${closed}%"
 else
     note "イベントを送る許可が無いので、⌘W の確認は飛ばした"
 fi

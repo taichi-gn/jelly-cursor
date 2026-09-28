@@ -28,7 +28,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func show(tab: SettingsTab? = nil, welcome: Bool = false) {
         if let tab { navigation.tab = tab }
         if welcome { navigation.showsWelcome = true }
-        navigation.isWindowOpen = true
         let window = self.window ?? makeWindow()
         self.window = window
         NSApp.setActivationPolicy(.regular)
@@ -42,7 +41,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // 開く前に使っていたアプリへ前面を返す
     func windowWillClose(_ notification: Notification) {
         recorder.stop()
-        navigation.isWindowOpen = false
         // 案内は閉じるボタンで消さなくても、次に開いたときには出さない
         navigation.showsWelcome = false
         NSApp.setActivationPolicy(.accessory)

@@ -13,8 +13,6 @@ enum SettingsTab: String, CaseIterable {
 @Observable
 final class SettingsNavigation {
     var tab = SettingsTab.general
-    // 窓を閉じている間は、プレビューを描き直さない
-    var isWindowOpen = false
     // はじめて起動したときの案内を出しているか
     var showsWelcome = false
 }
@@ -31,7 +29,7 @@ struct SettingsView: View {
             GeneralPane(settings: settings, state: state, actions: actions, recorder: recorder, navigation: navigation)
                 .tabItem { Label("一般", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
-            MotionPane(settings: settings, isPreviewPaused: !navigation.isWindowOpen)
+            MotionPane(settings: settings)
                 .tabItem { Label("動き", systemImage: "wand.and.rays") }
                 .tag(SettingsTab.motion)
             CursorsPane(settings: settings)
@@ -131,7 +129,6 @@ private struct GeneralPane: View {
 // 動き: プリセット・強さ・プレビュー
 private struct MotionPane: View {
     @Bindable var settings: AppSettings
-    let isPreviewPaused: Bool
 
     var body: some View {
         Form {
@@ -158,7 +155,7 @@ private struct MotionPane: View {
             }
 
             Section("プレビュー") {
-                MotionPreview(style: settings.values.motion, isPaused: isPreviewPaused)
+                MotionPreview(style: settings.values.motion)
                     .frame(height: 170)
                 Note("標準は、これまでの JellyCursor と同じ動きです")
             }
@@ -406,7 +403,7 @@ private struct AboutPane: View {
                         Text("コピーしました").font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Note("おかしな動きを伝えるときに貼り付けてください。この起動のあいだの状態の変化の記録も入ります")
+                Note("おかしな動きを伝えるときに貼り付けてください。この起動のあいだの最近の記録（状態の変化など）も入ります")
             }
         }
         .formStyle(.grouped)
@@ -418,7 +415,7 @@ private struct AboutPane: View {
             activity: state.activity, canHideCursor: state.canHideCursor, safeMode: state.safeMode,
             pointerScale: Double(SystemPointer.scale()),
             screens: NSScreen.screens.map { "\(Int($0.frame.width))×\(Int($0.frame.height))@\($0.backingScaleFactor)x" },
-            settings: settings.values, shortcutFailed: state.shortcutFailed, recentLog: recentLogLines())
+            settings: settings.values, shortcutFailed: state.shortcutFailed, recentLog: AppLog.recent)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(report.text, forType: .string)
         // 続けて押したときは、最後に押してから2秒たつまで「コピーしました」を出しておく

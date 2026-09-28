@@ -18,9 +18,14 @@ guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: b
     fail("\(bundleID) が動いていない", 1)
 }
 
+// 読めなかった部品があったか（無い属性を読んだときは数えない）。見つからなかったとき、忙しかっただけなら 3 で終わる
+var unreadable = false
+
 func value(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
     var value: CFTypeRef?
-    return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success ? value : nil
+    let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+    if ![.success, .noValue, .attributeUnsupported].contains(result) { unreadable = true }
+    return result == .success ? value : nil
 }
 
 func geometry<T>(_ element: AXUIElement, _ attribute: String, _ type: AXValueType, _ empty: T) -> T {
@@ -44,7 +49,9 @@ func search(_ element: AXUIElement, depth: Int) -> AXUIElement? {
 
 let root = AXUIElementCreateApplication(app.processIdentifier)
 guard value(root, kAXChildrenAttribute) != nil else { fail("\(bundleID) の中身を読めない", 3) }
-guard let element = search(root, depth: 0) else { fail("「\(name)」が見つからない", 1) }
+guard let element = search(root, depth: 0) else {
+    fail("「\(name)」が見つからない", unreadable ? 3 : 1)
+}
 let origin = geometry(element, kAXPositionAttribute, .cgPoint, CGPoint.zero)
 let size = geometry(element, kAXSizeAttribute, .cgSize, CGSize.zero)
 print("\(Int(origin.x)),\(Int(origin.y)),\(Int(size.width)),\(Int(size.height))")
