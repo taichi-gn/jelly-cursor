@@ -36,8 +36,8 @@ package final class AppController: NSObject, NSApplicationDelegate {
                               cursorKinds: settings.values.cursorKinds)
         setUpSignalHandlers()
         NSApp.mainMenu = makeMainMenu()
-        // .app に入れたアイコンは、起動した直後だと macOS が読み込めておらず、Dock（設定画面を開いている間）や
-        // 「JellyCursor について」に空のアイコンが出ることがあるので、自分でも描いて渡す
+        // .app に入れたアイコンを macOS が読み込めていないと「JellyCursor について」に空のアイコンが出るので、
+        // 自分でも描いて渡す（Dock のぶんは、設定画面を開いてふつうのアプリになったときに渡す）
         NSApp.applicationIconImage = AppIconImage.make()
         statusMenu = StatusMenu(
             settings: settings, state: state, frontApp: { [weak self] in self?.system.lastOtherApp },

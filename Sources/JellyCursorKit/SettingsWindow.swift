@@ -32,6 +32,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let window = self.window ?? makeWindow()
         self.window = window
         NSApp.setActivationPolicy(.regular)
+        // Dock のアイコンは、ふつうのアプリになってから渡さないと空のアイコンのままになる（macOS 26 で確認）
+        NSApp.applicationIconImage = AppIconImage.make()
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }

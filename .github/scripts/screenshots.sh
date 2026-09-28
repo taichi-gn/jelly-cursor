@@ -17,7 +17,7 @@ note() {
     echo "$1"
     echo "$1" >>"$SUMMARY"
 }
-for tool in window-bounds move-mouse diagnose press-key click; do
+for tool in window-bounds move-mouse diagnose press-key click dock-tile; do
     swiftc -O ".github/scripts/$tool.swift" -o "$TOOLS/$tool"
 done
 
@@ -57,22 +57,28 @@ cpu_seconds() {
     ps -o time= -p "$1" | awk -F: '{ if (NF == 3) print $1 * 3600 + $2 * 60 + $3; else print $1 * 60 + $2 }'
 }
 
-# JellyCursor を起動する前の Dock（あとで、設定画面を開いたときの Dock と比べる）
-read -r _ _ screen_width screen_height <<<"$("$TOOLS/diagnose" JellyCursor | grep "screen size")"
-screencapture -x -R"0,$((screen_height - 80)),$screen_width,80" "$OUT/dock-before.png" || true
-note "起動前: $("$TOOLS/diagnose" JellyCursor | grep "regular apps")"
-
 # はじめての起動では、案内つきで設定画面が開く
 defaults delete local.jellycursor 2>/dev/null || true
 launch
 bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "はじめての起動で設定画面が開かなかった"
 screencapture -x -R"$bounds" "$OUT/welcome.png"
-# 画面全体も撮る（設定画面を開いている間は、Dock にアイコンが出る）。
-# Dock のアイコンは読み込みに時間がかかることがあるので、しばらくたってから Dock のあたりだけをもう一度撮る
+# 設定画面を開いている間は Dock にアイコンが出る。空のアイコンになっていないこと
 screencapture -x "$OUT/screen.png"
 note "設定画面を開いたあと: $("$TOOLS/diagnose" JellyCursor | grep "regular apps")"
-sleep 15
-screencapture -x -R"0,$((screen_height - 80)),$screen_width,80" "$OUT/dock-later.png" || note "Dock を撮れなかった"
+set +e
+tile=$("$TOOLS/dock-tile" JellyCursor)
+found=$?
+set -e
+if [ "$found" -eq 0 ]; then
+    screencapture -x -R"$tile" "$OUT/dock-tile.png"
+    color=$("$TOOLS/dock-tile" --color "$OUT/dock-tile.png")
+    note "Dock のアイコン: $tile $color"
+    awk -v v="${color##*=}" 'BEGIN { exit !(v >= 0.15) }' || fail "Dock のアイコンが色の無い（空の）アイコンになっている"
+elif [ "$found" -eq 2 ]; then
+    note "アクセシビリティの許可が無いので、Dock のアイコンの確認は飛ばした"
+else
+    fail "設定画面を開いても Dock にアイコンが出ていない"
+fi
 quit
 
 # ここからは案内を出さない
@@ -196,7 +202,7 @@ ls -la "$OUT"
 # 設定画面の各タブは成果物にだけ入れ、ログには、そのほかの画像を出す
 sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/screen.png" --out "$TOOLS/screen.jpg" >/dev/null
 [ -f "$OUT/menu-screen.png" ] && sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/menu-screen.png" --out "$TOOLS/menu-screen.jpg" >/dev/null
-for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-before.png "$OUT"/dock-later.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
+for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
     [ -f "$image" ] || continue
     echo "BEGIN-IMAGE $(basename "$image")"
     base64 -b 100 -i "$image"
