@@ -30,8 +30,11 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
-    [ -f "$OUT/settings-about.png" ] && { sips -s format jpeg -s formatOptions 70 "$OUT/settings-about.png" --out "$TOOLS/settings-about.jpg" >/dev/null || true; }
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/settings-about.jpg "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
+    for name in settings-about focus-motion focus-general focus-cursors; do
+        [ -f "$OUT/$name.png" ] || continue
+        sips -s format jpeg -s formatOptions 70 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
+    done
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/settings-about.jpg "$TOOLS"/focus-motion.jpg "$TOOLS"/focus-general.jpg "$TOOLS"/focus-cursors.jpg "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
@@ -205,6 +208,26 @@ else
     note "イベントを送る許可が無いので、⌘W の確認は飛ばした"
 fi
 quit
+
+# タブを切り替えたあとに、キーボード操作用の青い枠（フォーカスの枠）が出ないこと。
+# システム設定の「キーボードナビゲーション」がオンのときに出るので、その設定にして確かめる
+defaults write NSGlobalDomain AppleKeyboardUIMode -int 2
+launch -OpenSettings general
+IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
+if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
+    sleep 0.5
+    for tab in "motion 193" "general 143" "cursors 254"; do
+        read -r name x <<<"$tab"
+        "$TOOLS/click" $((wx + x)) $((wy + 43))
+        sleep 1.2
+        screencapture -x -R"$wx,$wy,$ww,$wh" "$OUT/focus-$name.png"
+        note "タブ $name を選んだあと: $("$TOOLS/image-stats" "$OUT/focus-$name.png")"
+    done
+else
+    note "クリックを送る許可が無いので、フォーカスの枠の確認は飛ばした"
+fi
+quit
+defaults delete NSGlobalDomain AppleKeyboardUIMode
 
 # 円を描いて速く動かしている間と、止めた直後（戻る揺れ）の矢印。
 # CI の Mac は「視差効果を減らす」がオンで、初期設定では止まるので、その設定だけ外して撮る
