@@ -309,6 +309,31 @@ import Testing
         }
     }
 
+    // 指も、左右に振って同じ向きへ回り続けない（ゆっくり大きく振っても、1往復ごとに1回転しない）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func handShakingDoesNotSpin(rate: CGFloat) {
+        for axis in [0, .pi / 4, .pi / 2] as [CGFloat] {
+            for (amplitude, frequency) in [(200, 2), (30, 3), (50, 4), (100, 4)] as [(CGFloat, CGFloat)] {
+                var hand = HandMotion(scale: 1)
+                var random = SeededRandom(seed: 3)
+                var net: CGFloat = 0, worst: CGFloat = 0, last: CGFloat?
+                var t: CGFloat = 0
+                hand.step(to: CGPoint(x: 500, y: 500), dt: 0, imageHeight: 32)
+                while t < 3 {
+                    t += 1 / rate
+                    let u = amplitude * min(t / 0.2, 1) * sin(2 * .pi * frequency * t)
+                    let jitter = (random.next() - 0.5) * 0.6
+                    let mouse = CGPoint(x: 500 + u * cos(axis) - jitter * sin(axis), y: 500 + u * sin(axis) + jitter * cos(axis))
+                    hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+                    if let last { net += wrapAngle(hand.angle - last) }
+                    last = hand.angle
+                    worst = max(worst, abs(net))
+                }
+                #expect(worst < 5 * .pi, "向き \(Int(axis * 180 / .pi))° \(amplitude)px \(frequency)回/秒: \(worst / (2 * .pi)) 回転")
+            }
+        }
+    }
+
     // ふつうの手では起きない乱暴な入力（向きと速さが一瞬で変わる・画面の端まで飛ぶ・0 秒や 1/30 秒のフレーム）でも、
     // 形は有限で、マウスの近くにあり、指の伸びとつぶれも範囲に収まる。クリックも混ぜる
     @Test func erraticInputStaysFiniteAndNearTheMouse() {

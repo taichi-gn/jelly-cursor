@@ -56,6 +56,10 @@ package enum Tuning {
         static let returnOmega: CGFloat = 18
         static let returnSwingDampingRatio: CGFloat = 0.4
         static let returnSettleDampingRatio: CGFloat = 1.0
+        // 向ける先が急に変わった大きさがこれ（ラジアン）より大きい（ほぼ逆向き）とき、それまでに unwindTurn より回っていたら、
+        // 巻き戻す側へ回す
+        static let oppositeTurn: CGFloat = 2.6
+        static let unwindTurn: CGFloat = 0.5
     }
 
     // 道が胴体の長さのうちで折り返したとき（左右に振ったときなど）。道に沿わせると胴体が自分と重なって崩れて見えるので、

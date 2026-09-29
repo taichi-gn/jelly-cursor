@@ -20,6 +20,10 @@ struct Heading {
     private var idleTime: CGFloat = 0
     private var travel: CGFloat = 0
     private var returnPhase = ReturnPhase.none
+    // 止まったときの向きから回った向きの合計（ラジアン。+ で左回り）。動いている間の分だけ数え、止まって戻り始めたら数え直す
+    private var turned: CGFloat = 0
+    // 向ける先が急にほぼ逆へ変わったときに回る側（+1 で左回り）。回った分を巻き戻す側。近い側でよいときは nil
+    private var forcedSide: CGFloat?
     private let turnSpring: DampedSpring
     private let swingSpring: DampedSpring
     private let settleSpring = DampedSpring(omega: Tuning.Turn.returnOmega,
@@ -50,6 +54,8 @@ struct Heading {
 
     // 胴体を先端のまわりで回し終えたあと、その向きと回る速さから続ける（向きが飛ばないように）
     mutating func align(angle: CGFloat, velocity: CGFloat) {
+        turned += wrapAngle(angle - self.angle)
+        forcedSide = nil
         self.angle = wrapAngle(angle)
         targetAngle = self.angle
         angularVel = velocity
@@ -71,18 +77,34 @@ struct Heading {
         let returning = idleTime >= Tuning.Turn.returnDelay
         if returning {
             targetAngle = restAngle
+            // 元の向きへは近い側から戻るので、それまでに回った分は忘れる
+            turned = wrapAngle(angle - restAngle)
+            forcedSide = nil
         } else {
             returnPhase = .none
             if travel >= Tuning.Turn.minTravel && hypot(smoothedVel.dx, smoothedVel.dy) > Tuning.Turn.minSpeed {
-                targetAngle = atan2(smoothedVel.dy, smoothedVel.dx)
+                let target = atan2(smoothedVel.dy, smoothedVel.dx)
+                // 左右に振ったときなど、向ける先が急にほぼ逆へ変わったら、それまでに回った分を巻き戻す側へ回す。
+                // 近い側へ回すと、ばねの行き過ぎのぶん毎回同じ側が近くなり、同じ向きへ回り続ける
+                if abs(wrapAngle(target - targetAngle)) > .pi / 2 {
+                    let error = wrapAngle(target - angle)
+                    forcedSide = abs(error) > Tuning.Turn.oppositeTurn && abs(turned) > Tuning.Turn.unwindTurn
+                        ? (turned > 0 ? -1 : 1) : nil
+                }
+                targetAngle = target
             }
         }
         let h = dt / CGFloat(Tuning.Settle.substeps)
         for _ in 0..<Tuning.Settle.substeps {
-            let error = wrapAngle(targetAngle - angle)
+            var error = wrapAngle(targetAngle - angle)
+            if let side = forcedSide {
+                if error * side < 0 { error += side * 2 * .pi }
+                if abs(error) < .pi / 2 { forcedSide = nil }
+            }
             let spring = returning ? returnSpring(error: error) : turnSpring
             angularVel += spring.velocityChange(error: error, velocity: angularVel, h: h)
             angle += angularVel * h
+            turned += angularVel * h
         }
         angle = wrapAngle(angle)
     }

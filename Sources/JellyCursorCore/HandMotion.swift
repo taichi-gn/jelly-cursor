@@ -71,8 +71,10 @@ package struct HandMotion {
         }
         var turn = wrapAngle(atan2(mouse.y - behind.y, mouse.x - behind.x) - heading.angle)
         // ばねの向きとほぼ逆の道（止まった指から真下へ動き出したときなど）は、右回りと左回りのどちらでもほぼ同じ角度なので、
-        // 手ぶれで回る側が入れ替わって指が行ったり来たりしないよう、前のフレームと同じ側へ回す
-        if abs(turn) > Tuning.Hand.oppositeTurn, turn * lastTurn < 0 {
+        // 手ぶれで回る側が入れ替わって指が行ったり来たりしないよう、前のフレームと同じ側へ回す。
+        // 前のフレームもほぼ逆だったときだけにする（前のフレームで少し遅れていただけなら、近い側へ回す。
+        // そうしないと、左右に振るたびに遠回りして、同じ向きへ回り続ける）
+        if abs(turn) > Tuning.Hand.oppositeTurn, abs(lastTurn) > Tuning.Hand.oppositeTurn, turn * lastTurn < 0 {
             turn += turn > 0 ? -2 * .pi : 2 * .pi
         }
         lastTurn = turn
