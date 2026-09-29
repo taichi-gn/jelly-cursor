@@ -26,6 +26,8 @@ package final class Jelly: CursorFigure {
         var velocity: CGFloat = 0
         // 回る側（+1 で左回り）。先端が折り返しから離れて回す先が決まったときに決める
         var side: CGFloat?
+        // 前のフレームの回す先の向き。折り返しが抜けたあと、回す先が回り続けても（円を描き続けても）遅れずに追うため
+        var lastTarget: CGFloat?
     }
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
@@ -50,11 +52,12 @@ package final class Jelly: CursorFigure {
         let fold = heading.commitment > 0 ? trail.fold() : nil
         updatePivot(mouse: mouse, fold: fold, moved: moved, dt: dt)
 
-        // 回している間は伸びを戻し、短くしてから回す
-        let stretch = pivot == nil ? min(trail.length, Tuning.Trail.maxStretch) : 0
+        // 回している間は伸びを戻し、短くしてから回す。回し終えたら、道に沿わせるのに合わせて少しずつ伸ばす（一度に伸ばすと跳ねて見える）
+        let stretch = pivot == nil ? min(trail.length, Tuning.Trail.maxStretch) * pathFollow : 0
         var target = shape.length + stretch * stretchScale * heading.commitment
-        // 道が折り返したら、胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）
-        if let fold, fold.distance < min(length, trail.length) {
+        // 道が折り返したら、胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）。
+        // 今の長さが折り返しに届いていなくても、伸びる途中で越えないよう、いつも抑える
+        if let fold {
             target = min(target, max(shape.length, fold.distance))
         }
         if dt > 0 {
@@ -88,21 +91,31 @@ package final class Jelly: CursorFigure {
             // 回す先は、先端から折り返し（無くなったら胴体の長さ）までの道の向き。新しく進む向きの後ろ。
             // 先端が折り返しから少し離れるまでは回さない（行き過ぎて少し戻したときに、くるっと向きを変えないように）
             let end = trail.point(at: min(max(fold?.distance ?? span, Tuning.Fold.reference), trail.length))
+            let maxSpeed = Tuning.Fold.maxTailSpeed / length
             var error: CGFloat = 0
+            // 回す先が回る速さ。ばねはこの速さに合わせて回しながら追う（合わせないと、円を描き続ける間はいつまでも
+            // 回す先に追いつけず、回し終わらない。回している間は伸びないので、短いままになる）
+            var targetRate: CGFloat = 0
             if hypot(end.x - mouse.x, end.y - mouse.y) > Tuning.Fold.minTurnTravel {
                 let target = atan2(end.y - mouse.y, end.x - mouse.x)
+                // 折り返しを見ている間は、回す先が折り返しの位置で決まり、道の向きとは関係なく動くので合わせない
+                if !folded, let last = p.lastTarget, dt > 0 {
+                    targetRate = min(max(wrapAngle(target - last) / dt, -maxSpeed), maxSpeed)
+                }
+                p.lastTarget = folded ? nil : target
                 let side = p.side ?? turnSide(from: p.angle, to: target)
                 p.side = side
                 error = wrapAngle(target - p.angle)
                 if abs(error) > Tuning.Fold.oppositeTurn, error * side < 0 {
                     error += error > 0 ? -2 * .pi : 2 * .pi
                 }
+            } else {
+                p.lastTarget = nil
             }
             let spring = DampedSpring(omega: Tuning.Fold.omega, dampingRatio: 1)
-            let maxSpeed = Tuning.Fold.maxTailSpeed / length
             let h = dt / CGFloat(Tuning.Settle.substeps)
             for _ in 0..<Tuning.Settle.substeps {
-                p.velocity += spring.velocityChange(error: error, velocity: p.velocity, h: h)
+                p.velocity += spring.velocityChange(error: error, velocity: p.velocity - targetRate, h: h)
                 p.velocity = min(max(p.velocity, -maxSpeed), maxSpeed)
                 p.angle += p.velocity * h
                 error -= p.velocity * h

@@ -39,6 +39,20 @@ enum MouseScript {
         return frames
     }
 
+    // 円（楕円）を描く。回る速さは 0.3 秒でなめらかに上げ、reverseAt 秒で回る向きを逆にする
+    static func circle(radiusX: CGFloat, radiusY: CGFloat, revolutions: CGFloat, rate: CGFloat, seconds: CGFloat = 3,
+                       reverseAt: CGFloat = .infinity) -> [ScriptFrame] {
+        var frames = [ScriptFrame(mouse: CGPoint(x: 500 + radiusX, y: 500), dt: 0)]
+        let dt = 1 / rate
+        var t: CGFloat = 0, phase: CGFloat = 0
+        while t < seconds {
+            t += dt
+            phase += (t < reverseAt ? 1 : -1) * 2 * .pi * revolutions * min(t / 0.3, 1) * dt
+            frames.append(ScriptFrame(mouse: CGPoint(x: 500 + radiusX * cos(phase), y: 500 + radiusY * sin(phase)), dt: dt))
+        }
+        return frames
+    }
+
     // 手で動かすような、でたらめな動き。止まる・ゆっくり・速い（最大 6000pt/秒）を混ぜ、
     // 速さはなめらかに（約0.03秒で）変わる
     static func wander(seed: Int, rate: CGFloat, seconds: CGFloat = 4) -> [ScriptFrame] {

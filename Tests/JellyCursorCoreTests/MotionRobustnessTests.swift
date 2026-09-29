@@ -155,6 +155,32 @@ import Testing
         }
     }
 
+    // 円を描き続けると、矢印は道に沿って伸びたまま回る。途中で回る向きを逆にして（道が折り返して）胴体をまっすぐにしても、
+    // すぐにまた伸びる（回し終わらずに、いつまでも短いままにならない）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func keepsStretchingWhileCircling(rate: CGFloat) {
+        let rest = ArrowShape(scale: 1).length
+        for (rx, ry, revolutions) in [(40, 40, 3), (80, 80, 2), (80, 30, 3)] as [(CGFloat, CGFloat, CGFloat)] {
+            // 最後の1秒の、先端からいちばん遠い頂点までの距離の平均
+            func reach(reverseAt: CGFloat) -> CGFloat {
+                let arrow = Jelly(scale: 1)
+                let script = MouseScript.circle(radiusX: rx, radiusY: ry, revolutions: revolutions, rate: rate, reverseAt: reverseAt)
+                var sum: CGFloat = 0, count: CGFloat = 0
+                for (i, frame) in script.enumerated() {
+                    arrow.step(to: frame.mouse, dt: frame.dt)
+                    guard i >= script.count - Int(rate) else { continue }
+                    sum += arrow.points.map { hypot($0.x - frame.mouse.x, $0.y - frame.mouse.y) }.max() ?? 0
+                    count += 1
+                }
+                return sum / count
+            }
+            let steady = reach(reverseAt: .infinity), reversed = reach(reverseAt: 1.2)
+            let label = "\(rx)x\(ry) \(revolutions)回/秒"
+            #expect(steady > 2.5 * rest, "\(label): \(steady)")
+            #expect(reversed > 0.95 * steady, "\(label): 逆回しのあと \(reversed)、回し続けたとき \(steady)")
+        }
+    }
+
     // 左右に振ると、矢印は振り子のように行き来する。同じ向きへ回り続けない（プロペラのように回らない）
     @Test(arguments: [60, 120, 240] as [CGFloat])
     func shakingWagsInsteadOfSpinning(rate: CGFloat) {
