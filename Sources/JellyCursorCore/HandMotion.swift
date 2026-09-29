@@ -25,6 +25,7 @@ package struct HandMotion {
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
     private var squish: ClickSquish
+    private let motion: MotionParameters
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
         heading = Heading(restAngle: .pi / 2, motion: motion)
@@ -32,11 +33,22 @@ package struct HandMotion {
         stretchSpring = SpringValue(omega: Tuning.Hand.omega, dampingRatio: motion.handDampingRatio)
         maxStretch = Tuning.Hand.maxStretch * motion.stretch
         squish = ClickSquish(motion: motion)
+        self.motion = motion
     }
 
     // imageHeight は描く画像の高さ。伸びのずれをピクセルに直して、落ち着いたかを決めるのに使う
     package mutating func step(to mouse: CGPoint, dt: CGFloat, imageHeight: CGFloat, pressed: Bool = false) {
         squish.step(pressed: pressed, mouse: mouse, dt: dt)
+        // ポインタが飛んだら、新しい位置で止まっている状態から始め直す（飛んだ向きへ大きく回らないように）
+        if let lastMouse, isJump(from: lastMouse, to: mouse, dt: dt) {
+            heading = Heading(restAngle: .pi / 2, motion: motion)
+            trail = Trail()
+            stretchSpring = SpringValue(omega: Tuning.Hand.omega, dampingRatio: motion.handDampingRatio)
+            smoothedVel = .zero
+            lastTurn = 0
+            angle = .pi / 2
+            self.lastMouse = nil
+        }
         if let lastMouse, dt > 0 {
             heading.turn(from: lastMouse, to: mouse, dt: dt)
             let k = 1 - exp(-Tuning.Hand.velocitySmoothing * dt)

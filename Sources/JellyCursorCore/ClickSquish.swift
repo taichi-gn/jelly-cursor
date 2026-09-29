@@ -43,8 +43,9 @@ struct ClickSquish {
         let drag = max(dragged - Tuning.Click.dragDeadZone, 0)
         target = pressed ? depth * max(0, 1 - drag / Tuning.Click.dragRelease) : 0
         let spring = pressed ? pressSpring : releaseSpring
-        let h = dt / CGFloat(Tuning.Settle.substeps)
-        for _ in 0..<Tuning.Settle.substeps {
+        let n = substepCount(for: dt)
+        let h = dt / CGFloat(n)
+        for _ in 0..<n {
             velocity += spring.velocityChange(error: target - value, velocity: velocity, h: h)
             value += velocity * h
             // 形が裏返らないよう、つぶれと伸びに上限を設ける。上限に当たったらそちらへの速さは捨てる

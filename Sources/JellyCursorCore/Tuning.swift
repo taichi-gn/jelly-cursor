@@ -168,8 +168,16 @@ package enum Tuning {
         static let oppositeTurn: CGFloat = .pi * 3 / 4
     }
 
+    // 1フレームでこの距離(pt)より遠く、この速さ(pt/秒)より速く移ったら、手で動かしたのではなく飛んだとみなす
+    enum Jump {
+        static let distance: CGFloat = 250
+        static let speed: CGFloat = 15000
+    }
+
     enum Settle {
         static let substeps = 4
+        // ばねを1回に動かす時間の上限（秒）。フレームが 1/30 秒までなら substeps 回で足りる
+        static let maxSubstep: CGFloat = 1.0 / 120
         // すべてのずれがこのピクセル数を下回り、マウスも止まっていたら、更新を止めて眠る
         static let threshold: CGFloat = 0.05
         // 速度を「このあと何pxずれるか」に換算する係数

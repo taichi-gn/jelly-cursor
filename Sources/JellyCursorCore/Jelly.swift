@@ -13,6 +13,7 @@ package final class Jelly: CursorFigure {
     private var started = false
     package private(set) var isSettled = false
     private let stretchScale: CGFloat
+    private let motion: MotionParameters
     // 道が折り返したときに、胴体をまっすぐにして先端のまわりで回している間の向き（先端から胴体への向き）
     private var pivot: Pivot?
     // 胴体を道に沿わせる度合い。回している間は 0 へ寄せ、回し終えたら 1 へ戻す
@@ -48,16 +49,17 @@ package final class Jelly: CursorFigure {
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
         shape = ArrowShape(scale: scale)
-        // 胴体がいちばん伸びたときの長さまで、通った道を覚えておく
-        trail = Trail(keep: shape.length + Tuning.Trail.maxStretch * motion.stretch + 2 * Tuning.Trail.tangentWindow)
+        trail = Self.makeTrail(shape: shape, stretch: motion.stretch)
         heading = Heading(restAngle: shape.baseAngle, motion: motion)
         stretchScale = motion.stretch
+        self.motion = motion
         squish = ClickSquish(motion: motion)
         length = shape.length
         points = Array(repeating: .zero, count: shape.vertices.count)
     }
 
     package func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool) {
+        if started, isJump(from: lastMouse, to: mouse, dt: dt) { restart() }
         if !started {
             started = true
         } else if dt > 0 {
@@ -90,6 +92,25 @@ package final class Jelly: CursorFigure {
 
         let worst = max(trail.length, abs(length - shape.length), heading.restError, squish.restError(size: shape.length))
         isSettled = worst < Tuning.Settle.threshold && pivot == nil && pathFollow == 1
+    }
+
+    // 胴体がいちばん伸びたときの長さまで、通った道を覚えておく
+    private static func makeTrail(shape: ArrowShape, stretch: CGFloat) -> Trail {
+        Trail(keep: shape.length + Tuning.Trail.maxStretch * stretch + 2 * Tuning.Trail.tangentWindow)
+    }
+
+    // ポインタが飛んだとき、動きを止まった状態から始め直す（クリックでつぶれている状態はそのまま）
+    private func restart() {
+        trail = Self.makeTrail(shape: shape, stretch: stretchScale)
+        heading = Heading(restAngle: shape.baseAngle, motion: motion)
+        length = shape.length
+        pivot = nil
+        pathFollow = 1
+        pathGate = 1
+        engagedTime = 0
+        pivotTurns = 0
+        sincePivot = 0
+        started = false
     }
 
     // 矢じり（先端から普段の長さのうち）で道が折り返したら、道に沿わせず、まっすぐにして先端のまわりで回す。
@@ -139,9 +160,10 @@ package final class Jelly: CursorFigure {
                 p.lastTarget = nil
             }
             let spring = DampedSpring(omega: Tuning.Fold.omega, dampingRatio: 1)
-            let h = dt / CGFloat(Tuning.Settle.substeps)
+            let n = substepCount(for: dt)
+            let h = dt / CGFloat(n)
             let before = p.angle
-            for _ in 0..<Tuning.Settle.substeps {
+            for _ in 0..<n {
                 p.velocity += spring.velocityChange(error: error, velocity: p.velocity - targetRate, h: h)
                 p.velocity = min(max(p.velocity, -maxSpeed), maxSpeed)
                 p.angle += p.velocity * h

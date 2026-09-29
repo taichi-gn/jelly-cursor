@@ -15,6 +15,13 @@ extension Figure {
     }
 }
 
+// マウスが1フレームのうちに、手では動かせないほど遠くへ移ったか（ほかのアプリがポインタを動かしたときなど）。
+// そのときは、伸びや向きを、新しい位置で止まっている状態から始め直す（飛んだ線に沿って大きく伸びて回らないように）
+func isJump(from last: CGPoint, to mouse: CGPoint, dt: CGFloat) -> Bool {
+    let distance = hypot(mouse.x - last.x, mouse.y - last.y)
+    return distance > Tuning.Jump.distance && (dt <= 0 || distance / dt > Tuning.Jump.speed)
+}
+
 // 輪郭を変形させて描くもの。矢印（Jelly）と I 字（IBeam）
 package protocol CursorFigure: Figure {
     var points: [CGPoint] { get }

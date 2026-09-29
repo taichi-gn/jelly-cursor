@@ -44,6 +44,7 @@ package final class IBeam: CursorFigure {
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
     private var squish: ClickSquish
+    private let motion: MotionParameters
     private let height: CGFloat
     // 縦棒の中心線。クリック位置より少し左にあるので、ここを基準に広げて縦棒が横にずれないようにする
     private let stemCenterX: CGFloat
@@ -56,6 +57,7 @@ package final class IBeam: CursorFigure {
         maxStretch = Tuning.IBeam.maxStretch * motion.stretch
         maxLean = Tuning.IBeam.maxLean * motion.stretch
         squish = ClickSquish(motion: motion)
+        self.motion = motion
         vertices = Self.outline.map { p in
             let t = Self.smoothstep(Tuning.IBeam.stemHalfHeight, Tuning.IBeam.serifStart, abs(p.y))
             return Vertex(offset: CGVector(dx: p.x * scale, dy: -p.y * scale),
@@ -69,6 +71,14 @@ package final class IBeam: CursorFigure {
     }
 
     package func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool) {
+        // ポインタが飛んだら、新しい位置で止まっている状態から始め直す（飛んだ速さで大きく伸びないように）
+        if let lastMouse, isJump(from: lastMouse, to: mouse, dt: dt) {
+            widen = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
+            stretch = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
+            lean = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
+            smoothedVel = .zero
+            self.lastMouse = nil
+        }
         if let lastMouse, dt > 0 {
             let k = 1 - exp(-Tuning.IBeam.velocitySmoothing * dt)
             smoothedVel.dx += ((mouse.x - lastMouse.x) / dt - smoothedVel.dx) * k
@@ -78,7 +88,8 @@ package final class IBeam: CursorFigure {
             // 動いた方向の線に沿うように傾ける。sin 2θ は右上・左下で正（/）、左上・右下で負（\）、
             // 真横・真上下で 0（傾けない）
             let speed = hypot(smoothedVel.dx, smoothedVel.dy)
-            let diagonal = speed > 0 ? 2 * smoothedVel.dx * smoothedVel.dy / (speed * speed) : 0
+            // 動いた向きの角度から求める（速さで割ると、止まって速さがごく小さくなったときに2乗が 0 になり、割れなくなる）
+            let diagonal = sin(2 * atan2(smoothedVel.dy, smoothedVel.dx))
             lean.step(toward: maxLean * diagonal * tanh(speed / Tuning.IBeam.leanSpeed), dt: dt)
         }
         lastMouse = mouse

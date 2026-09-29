@@ -396,6 +396,64 @@ import Testing
         }
     }
 
+    // ほかのアプリがポインタを遠くへ動かした（1フレームで飛んだ）ときは、新しい位置で止まっている形から始め直す。
+    // 飛んだ線に沿って伸びたり、飛んだ向きへ回ったりしない
+    @Test func jumpsStartOverAtTheNewPosition() {
+        for distance in [300, 1500] as [CGFloat] {
+            let arrow = Jelly(scale: 1), beam = IBeam(scale: 1)
+            var hand = HandMotion(scale: 1)
+            let start = CGPoint(x: 300, y: 300), end = CGPoint(x: 300 + distance, y: 300 + distance * 0.3)
+            for figure in [arrow, beam] as [CursorFigure] { figure.step(to: start, dt: 0) }
+            hand.step(to: start, dt: 0, imageHeight: 32)
+            for _ in 0..<30 {
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: start, dt: 1 / 120) }
+                hand.step(to: start, dt: 1 / 120, imageHeight: 32)
+            }
+            let arrowAtRest = arrow.points.map { CGPoint(x: $0.x - start.x, y: $0.y - start.y) }
+            let beamAtRest = beam.points.map { CGPoint(x: $0.x - start.x, y: $0.y - start.y) }
+            var arrowMoved: CGFloat = 0, beamMoved: CGFloat = 0, handTurn: CGFloat = 0
+            for _ in 0..<60 {
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: end, dt: 1 / 120) }
+                hand.step(to: end, dt: 1 / 120, imageHeight: 32)
+                for (p, q) in zip(arrow.points, arrowAtRest) { arrowMoved = max(arrowMoved, hypot(p.x - end.x - q.x, p.y - end.y - q.y)) }
+                for (p, q) in zip(beam.points, beamAtRest) { beamMoved = max(beamMoved, hypot(p.x - end.x - q.x, p.y - end.y - q.y)) }
+                handTurn = max(handTurn, abs(wrapAngle(hand.angle - .pi / 2)))
+            }
+            #expect(arrowMoved < 0.5, "\(distance)pt 飛んだ: 矢印が形を変えた \(arrowMoved)")
+            #expect(beamMoved < 0.5, "\(distance)pt 飛んだ: I 字が形を変えた \(beamMoved)")
+            #expect(handTurn < 0.01, "\(distance)pt 飛んだ: 指が \(handTurn) ラジアン回った")
+            #expect(arrow.isSettled && beam.isSettled && hand.isSettled)
+        }
+    }
+
+    // 表示が詰まって1フレームが長くなっても（0.1〜0.5 秒）、ばねが暴れず、形はマウスの近くに収まる
+    @Test func longFramesStayCalm() {
+        for dt in [0.1, 0.3, 0.5] as [CGFloat] {
+            let arrow = Jelly(scale: 1), beam = IBeam(scale: 1)
+            var hand = HandMotion(scale: 1)
+            var mouse = CGPoint(x: 300, y: 300)
+            for figure in [arrow, beam] as [CursorFigure] { figure.step(to: mouse, dt: 0) }
+            hand.step(to: mouse, dt: 0, imageHeight: 32)
+            for i in 1...36 {
+                mouse = CGPoint(x: 300 + 1500 * CGFloat(i) / 120, y: 300)
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: mouse, dt: 1 / 120) }
+                hand.step(to: mouse, dt: 1 / 120, imageHeight: 32)
+            }
+            var beamReach: CGFloat = 0, handScale: CGFloat = 0, finite = true
+            for _ in 0..<60 {
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: mouse, dt: dt) }
+                hand.step(to: mouse, dt: dt, imageHeight: 32)
+                finite = finite && (arrow.points + beam.points).allSatisfy { $0.x.isFinite && $0.y.isFinite }
+                beamReach = max(beamReach, beam.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0)
+                handScale = max(handScale, hand.lengthScale)
+            }
+            #expect(finite, "\(dt) 秒のフレーム: 形が数でなくなった")
+            #expect(beamReach < 20, "\(dt) 秒のフレーム: I 字が \(beamReach)pt まで広がった")
+            #expect(handScale < 2, "\(dt) 秒のフレーム: 指が \(handScale) 倍に伸びた")
+            #expect(arrow.isSettled && beam.isSettled && hand.isSettled, "\(dt) 秒のフレーム: 落ち着かない")
+        }
+    }
+
     // ふつうの手では起きない乱暴な入力（向きと速さが一瞬で変わる・画面の端まで飛ぶ・0 秒や 1/30 秒のフレーム）でも、
     // 形は有限で、マウスの近くにあり、指の伸びとつぶれも範囲に収まる。クリックも混ぜる
     @Test func erraticInputStaysFiniteAndNearTheMouse() {

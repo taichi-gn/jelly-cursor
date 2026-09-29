@@ -110,8 +110,9 @@ struct Heading {
                 targetAngle = target
             }
         }
-        let h = dt / CGFloat(Tuning.Settle.substeps)
-        for _ in 0..<Tuning.Settle.substeps {
+        let n = substepCount(for: dt)
+        let h = dt / CGFloat(n)
+        for _ in 0..<n {
             var error = wrapAngle(targetAngle - angle)
             if let side = forcedSide {
                 if error * side < 0 { error += side * 2 * .pi }
