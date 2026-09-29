@@ -31,6 +31,11 @@ struct ClickSquish {
         max(abs(value - target), abs(velocity) * Tuning.Settle.velocityWeight) * size
     }
 
+    // ポインタが飛んだとき、押している位置も一緒に移す（飛んだ距離をドラッグとみなして、つぶれを戻さないように）
+    mutating func follow(jumpTo mouse: CGPoint) {
+        if isPressed { pressedAt = mouse }
+    }
+
     mutating func step(pressed: Bool, mouse: CGPoint, dt: CGFloat) {
         if pressed, !isPressed {
             pressedAt = mouse
@@ -43,8 +48,9 @@ struct ClickSquish {
         let drag = max(dragged - Tuning.Click.dragDeadZone, 0)
         target = pressed ? depth * max(0, 1 - drag / Tuning.Click.dragRelease) : 0
         let spring = pressed ? pressSpring : releaseSpring
-        let h = dt / CGFloat(Tuning.Settle.substeps)
-        for _ in 0..<Tuning.Settle.substeps {
+        let n = substepCount(for: dt)
+        let h = dt / CGFloat(n)
+        for _ in 0..<n {
             velocity += spring.velocityChange(error: target - value, velocity: velocity, h: h)
             value += velocity * h
             // 形が裏返らないよう、つぶれと伸びに上限を設ける。上限に当たったらそちらへの速さは捨てる

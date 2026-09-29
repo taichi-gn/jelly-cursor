@@ -15,12 +15,26 @@ package enum Tuning {
     // 胴体はマウスが通った道の上に並ぶ。矢印の長さ ＝ 普段の長さ ＋ 直近 duration 秒に動いた距離
     enum Trail {
         static let duration: CGFloat = 0.07
+        // 胴体がその秒数に動いた道のりより長いとき、後ろのほうを沿わせる道を、何秒前まで覚えておくか
+        static let keepTime: CGFloat = 0.5
         static let maxStretch: CGFloat = 60
         static let lengthSmoothing: CGFloat = 0.03
         // 伸びたぶん細くする度合い。0.5 なら長さ2倍で幅が約0.7倍、0 なら幅は変わらない
         static let thinning: CGFloat = 0.5
         // 道の向きを測るときに前後何pxの区間を使うか。短いと手ぶれで向きがばたつく
         static let tangentWindow: CGFloat = 3
+        // 道の向きとまっすぐな胴体の向きの cos が opposedCosine より小さい（100度より開いている）と、道に沿わせない。
+        // opposingCosine（70度）までは沿わせる
+        static let opposingCosine: CGFloat = 0.34
+        static let opposedCosine: CGFloat = -0.17
+        // 道に沿わせたい度合いがこれ以上のとき（すでに道に沿っているとき）は、向きがずれても沿わせる度合いを下げない
+        static let gateHold: CGFloat = 0.9
+        // 沿わせてよい度合いを下げる速さと上げる速さ（秒）。速く動かし始めたときに間に合うよう、下げるのは急ぐ
+        static let gateCloseTime: CGFloat = 0.003
+        static let gateOpenTime: CGFloat = 0.05
+        // 道に沿わせたい状態がこの秒数続いても向きがそろわなければ、さらに gateForceTime 秒かけて沿わせる
+        static let gateForceDelay: CGFloat = 0.15
+        static let gateForceTime: CGFloat = 0.15
     }
 
     // 進行方向へ先端を向ける。手ぶれで回らないよう、一定の速さを超えたときだけ向きを更新する
@@ -33,15 +47,27 @@ package enum Tuning {
         static let minTravel: CGFloat = 30
         static let travelResetDelay: CGFloat = 0.15
         static let velocitySmoothing: CGFloat = 20
+        // 手ぶれとみなす大きさ(pt)と、手ぶれの中心を求めるならしの時間（秒）。ならした点からこれより離れていなければ、
+        // 動いた距離に数えず、向きも変えない（止めた手がふるえても、矢印が曲がったり指が首を振ったりしないように）
+        static let tremorRadius: CGFloat = 4
+        static let tremorSmoothing: CGFloat = 0.1
         // 角度のずれをピクセルに換算するときの尾の長さ
         static let armLength: CGFloat = 30
         // 位置が変わらない状態がこの秒数続いたら、元の向き（左上）へ戻す。
         // 振り子のように1回だけ行き過ぎ、折り返したら弾まずに収まる。
         // 行き過ぎの大きさは returnSwingDampingRatio で決まる（0.4 で約25%、1 で行き過ぎない）
         static let returnDelay: CGFloat = 0.2
+        // 手ぶれだけの状態や、今の向きから外れた向きへゆっくり動かす状態がこの秒数続いたら、元の向きへ戻す。
+        // 動いた向きと今の向きの cos が astrayCosine より小さい（60度より開いている）と、外れているとみなす
+        static let slowReturnDelay: CGFloat = 0.4
+        static let astrayCosine: CGFloat = 0.5
         static let returnOmega: CGFloat = 18
         static let returnSwingDampingRatio: CGFloat = 0.4
         static let returnSettleDampingRatio: CGFloat = 1.0
+        // 向ける先が急に変わった大きさがこれ（ラジアン）より大きい（ほぼ逆向き）とき、それまでに unwindTurn より回っていたら、
+        // 巻き戻す側へ回す
+        static let oppositeTurn: CGFloat = 2.6
+        static let unwindTurn: CGFloat = 0.5
     }
 
     // 道が胴体の長さのうちで折り返したとき（左右に振ったときなど）。道に沿わせると胴体が自分と重なって崩れて見えるので、
@@ -58,8 +84,19 @@ package enum Tuning {
         static let omega: CGFloat = 55
         // 回している間に胴体の端が動く速さの上限（pt/秒）。長いうちはゆっくり、縮むにつれて速く回る
         static let maxTailSpeed: CGFloat = 1500
+        // ゆっくり折り返したときは、胴体の端が動く速さを、先端の速さのこの倍までにする（ただし minTailSpeed pt/秒 までは許す）
+        static let tailSpeedRatio: CGFloat = 4
+        static let minTailSpeed: CGFloat = 300
         // 回す先がこの角度より大きく離れていたら、ほぼ逆向きとみなし、決めた側へ回す（右回りと左回りが入れ替わらないように）
         static let oppositeTurn: CGFloat = 2.6
+        // 折り返しで回した向きの合計がこれ（ラジアン）を超えていたら、ほぼ逆向きへ回すときは巻き戻す側へ回す
+        static let unwindTurn: CGFloat = 0.5
+        // まっすぐにして回し始めるとき、胴体の尾が中ほどからこの角度（ラジアン）より横にあれば、曲がっている側へ回す
+        static let curlAngle: CGFloat = 0.2
+        // 回す先か今の向きが、止まったときの向きからこの角度（ラジアン）以内なら、どちら側へ回しても同じくらいなので、前と同じ側へ回す
+        static let restTie: CGFloat = 0.35
+        // この秒数折り返さなければ、回した向きの合計を忘れる
+        static let turnMemory: CGFloat = 1
         // 先端が折り返しからこの道のり(pt)離れるまでは回さない。行き過ぎて少し戻したときに、向きを変えないように
         static let minTurnTravel: CGFloat = 10
         // 折り返しが胴体より後ろへ抜け、回す先との差がこれ（ラジアン）より小さくなったら、道に沿わせるのに戻る
@@ -136,8 +173,18 @@ package enum Tuning {
         static let oppositeTurn: CGFloat = .pi * 3 / 4
     }
 
+    // 1フレームでこの距離(pt)より遠く、この速さ(pt/秒)より速く移ったら、手で動かしたのではなく飛んだとみなす
+    enum Jump {
+        static let distance: CGFloat = 250
+        static let speed: CGFloat = 15000
+        // 表示が詰まったフレーム（経過時間が上限で切られたとき）で、飛んだとみなす距離(pt)
+        static let stalledDistance: CGFloat = 1000
+    }
+
     enum Settle {
         static let substeps = 4
+        // ばねを1回に動かす時間の上限（秒）。フレームが 1/30 秒までなら substeps 回で足りる
+        static let maxSubstep: CGFloat = 1.0 / 120
         // すべてのずれがこのピクセル数を下回り、マウスも止まっていたら、更新を止めて眠る
         static let threshold: CGFloat = 0.05
         // 速度を「このあと何pxずれるか」に換算する係数

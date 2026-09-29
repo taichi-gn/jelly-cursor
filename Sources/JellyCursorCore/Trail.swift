@@ -3,7 +3,10 @@ import Foundation
 import CoreGraphics
 #endif
 
-// 直近のマウス位置を時刻つきで覚え、「先端から s px 後ろ」の位置を返す
+// 直近のマウス位置を時刻つきで覚え、「先端から s px 後ろ」の位置を返す。
+// length は直近 Tuning.Trail.duration 秒に動いた道のり（伸びの量に使う）。道の形は、それより古いところも
+// 先端から keep px まで（ただし Tuning.Trail.keepTime 秒まで）覚えておく（胴体がその秒数に動いた道のりより長いときに、
+// 後ろのほうも実際に通った道に沿わせるため）
 struct Trail {
     private struct Sample {
         let time: CGFloat
@@ -17,6 +20,13 @@ struct Trail {
     private var distances: [CGFloat] = []
 
     private(set) var length: CGFloat = 0
+    // 覚えている道の形の長さ（length 以上、keep 付近まで）
+    private(set) var pathLength: CGFloat = 0
+    private let keep: CGFloat
+
+    init(keep: CGFloat = 0) {
+        self.keep = keep
+    }
 
     mutating func record(_ mouse: CGPoint, dt: CGFloat) {
         clock += dt
@@ -25,12 +35,11 @@ struct Trail {
         } else {
             samples.append(Sample(time: clock, point: mouse))
         }
-        // 覚える時間より古いものは、補間に使う1つだけ残す
         let cutoff = clock - Tuning.Trail.duration
-        while samples.count >= 2 && samples[1].time <= cutoff {
-            samples.removeFirst()
-        }
-        rebuildPolyline(cutoff: cutoff)
+        let used = rebuildPolyline(cutoff: cutoff)
+        // 覚える時間より古く、道の形にも使わないものは捨てる（時間の境の補間に使う1つは残す）
+        let drop = min(used, samples.lastIndex { $0.time <= cutoff } ?? 0)
+        if drop > 0 { samples.removeFirst(drop) }
     }
 
     func point(at s: CGFloat) -> CGPoint {
@@ -45,10 +54,10 @@ struct Trail {
         return polyline[polyline.count - 1]
     }
 
-    // 古い端での「さらに古い方へ」の向き。道が短すぎれば nil
+    // 覚えている道の古い端での「さらに古い方へ」の向き。道が短すぎれば nil
     func tailDirection(window: CGFloat) -> CGVector? {
-        guard length > 0.5 else { return nil }
-        let a = point(at: max(length - window, 0)), b = point(at: length)
+        guard pathLength > 0.5 else { return nil }
+        let a = point(at: max(pathLength - window, 0)), b = point(at: pathLength)
         let d = hypot(b.x - a.x, b.y - a.y)
         guard d > 0.0001 else { return nil }
         return CGVector(dx: (b.x - a.x) / d, dy: (b.y - a.y) / d)
@@ -80,26 +89,41 @@ struct Trail {
         return nil
     }
 
-    private mutating func rebuildPolyline(cutoff: CGFloat) {
+    // 新しい順の折れ線を作り直す。時間の境（cutoff）の位置を補間して入れ、そこまでの道のりを length にする。
+    // その先は、keep px に届くまで古い点を足す。返すのは、使ったいちばん古い点の番号
+    private mutating func rebuildPolyline(cutoff: CGFloat) -> Int {
         polyline.removeAll(keepingCapacity: true)
         distances.removeAll(keepingCapacity: true)
-        for i in stride(from: samples.count - 1, through: 0, by: -1) {
-            var p = samples[i].point
-            // 覚える時間ちょうどの位置を補間し、止めたときに長さがなめらかに縮むようにする
-            if samples[i].time < cutoff && i + 1 < samples.count {
-                let a = samples[i], b = samples[i + 1]
-                let t = (cutoff - a.time) / (b.time - a.time)
-                p = CGPoint(x: a.point.x + (b.point.x - a.point.x) * t, y: a.point.y + (b.point.y - a.point.y) * t)
-            }
+        var windowLength: CGFloat?
+        var oldest = samples.count - 1
+        func append(_ p: CGPoint) {
             if let last = polyline.last {
                 let d = hypot(p.x - last.x, p.y - last.y)
-                guard d > 0 else { continue }
+                guard d > 0 else { return }
                 distances.append(distances[distances.count - 1] + d)
             } else {
                 distances.append(0)
             }
             polyline.append(p)
         }
-        length = distances.last ?? 0
+        for i in stride(from: samples.count - 1, through: 0, by: -1) {
+            if windowLength == nil && samples[i].time < cutoff {
+                // 覚える時間ちょうどの位置を補間し、止めたときに長さがなめらかに縮むようにする
+                if i + 1 < samples.count {
+                    let a = samples[i], b = samples[i + 1]
+                    let t = (cutoff - a.time) / (b.time - a.time)
+                    append(CGPoint(x: a.point.x + (b.point.x - a.point.x) * t, y: a.point.y + (b.point.y - a.point.y) * t))
+                }
+                windowLength = distances.last ?? 0
+                if (distances.last ?? 0) >= keep && !polyline.isEmpty { break }
+            }
+            if windowLength != nil && samples[i].time < clock - Tuning.Trail.keepTime && !polyline.isEmpty { break }
+            append(samples[i].point)
+            oldest = i
+            if windowLength != nil && (distances.last ?? 0) >= keep { break }
+        }
+        length = windowLength ?? distances.last ?? 0
+        pathLength = distances.last ?? 0
+        return oldest
     }
 }

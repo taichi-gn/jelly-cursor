@@ -125,6 +125,29 @@ import Testing
         #expect(turn(back: 30, over: 0.2) > 2.5)
     }
 
+    // 向きを変えるかどうかの境目くらい（25〜35pt）だけ動かしたとき、画面の書き換えの速さで向きを変えたり変えなかったりしない
+    @Test func smallMovesTurnTheSameAtAnyRefreshRate() {
+        for distance in [25, 30, 35] as [CGFloat] {
+            for speed in [150, 300, 800] as [CGFloat] {
+                let turns = [60, 120, 240].map { (rate: CGFloat) -> CGFloat in
+                    let arrow = Jelly(scale: 1)
+                    let start = CGPoint(x: 300, y: 300)
+                    arrow.step(to: start, dt: 0)
+                    let before = bodyAngle(arrow, from: start)
+                    var mouse = start, t: CGFloat = 0
+                    while t < distance / speed + 0.15 {
+                        t += 1 / rate
+                        mouse = CGPoint(x: start.x + min(speed * t, distance), y: start.y)
+                        arrow.step(to: mouse, dt: 1 / rate)
+                    }
+                    return abs(wrapAngle(bodyAngle(arrow, from: mouse) - before))
+                }
+                let spread = (turns.max() ?? 0) - (turns.min() ?? 0)
+                #expect(spread < 0.3, "\(distance)pt を \(speed)pt/秒: 60/120/240Hz で \(turns) ラジアン回った")
+            }
+        }
+    }
+
     // まっすぐ速く動かして一瞬で逆向きに戻しても、画面の書き換えの速さによらず、矢じりが折り返しで崩れず、大きく飛ばない
     @Test(arguments: [60, 120, 240] as [CGFloat])
     func sharpUTurnsStayWhole(rate: CGFloat) {
@@ -155,6 +178,33 @@ import Testing
         }
     }
 
+    // 円を描き続けると、矢印は道に沿って伸びたまま回る。途中で回る向きを逆にして（道が折り返して）胴体をまっすぐにしても、
+    // すぐにまた伸びる（回し終わらずに、いつまでも短いままにならない）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func keepsStretchingWhileCircling(rate: CGFloat) {
+        let rest = ArrowShape(scale: 1).length
+        // 速く回すほど、画面の書き換えが遅い（60Hz）ときに回し終わりにくい
+        for (rx, ry, revolutions) in [(40, 40, 3), (80, 80, 2), (80, 30, 3), (80, 80, 2.5), (40, 40, 4)] as [(CGFloat, CGFloat, CGFloat)] {
+            // 最後の1秒の、先端からいちばん遠い頂点までの距離の平均
+            func reach(reverseAt: CGFloat) -> CGFloat {
+                let arrow = Jelly(scale: 1)
+                let script = MouseScript.circle(radiusX: rx, radiusY: ry, revolutions: revolutions, rate: rate, reverseAt: reverseAt)
+                var sum: CGFloat = 0, count: CGFloat = 0
+                for (i, frame) in script.enumerated() {
+                    arrow.step(to: frame.mouse, dt: frame.dt)
+                    guard i >= script.count - Int(rate) else { continue }
+                    sum += arrow.points.map { hypot($0.x - frame.mouse.x, $0.y - frame.mouse.y) }.max() ?? 0
+                    count += 1
+                }
+                return sum / count
+            }
+            let steady = reach(reverseAt: .infinity), reversed = reach(reverseAt: 1.2)
+            let label = "\(rx)x\(ry) \(revolutions)回/秒"
+            #expect(steady > 2.5 * rest, "\(label): \(steady)")
+            #expect(reversed > 0.95 * steady, "\(label): 逆回しのあと \(reversed)、回し続けたとき \(steady)")
+        }
+    }
+
     // 左右に振ると、矢印は振り子のように行き来する。同じ向きへ回り続けない（プロペラのように回らない）
     @Test(arguments: [60, 120, 240] as [CGFloat])
     func shakingWagsInsteadOfSpinning(rate: CGFloat) {
@@ -173,6 +223,323 @@ import Testing
             }
             #expect(total > 20, "上下のゆれ \(wobble): 振っても向きが変わらない")
             #expect(abs(net) < .pi, "上下のゆれ \(wobble): \(net) ラジアン回り続けた")
+        }
+    }
+
+    // 止まった矢印の胴体と逆向きへ動き出しても、胴体が先端へ縮んで小さな塊にならず、1フレームで裏返らない。少しだけ動かしたとき・
+    // 止まった矢印から速く動き出したとき・行き過ぎて一瞬止めてから戻したとき・ゆっくり折り返したときを見る。
+    // 表示が詰まったとき（30Hz）も見る
+    @Test(arguments: [30, 60, 120, 240] as [CGFloat])
+    func movingAgainstTheBodyDoesNotCollapse(rate: CGFloat) {
+        let rest = ArrowShape(scale: 1).length
+        func shortestReach(_ position: (CGFloat) -> CGPoint, seconds: CGFloat) -> CGFloat {
+            motion(position, seconds: seconds).shortest
+        }
+        // いちばん短くなったときの長さと、1フレームでいちばん大きく動いた量（マウスの動きを差し引いたもの）
+        func motion(_ position: (CGFloat) -> CGPoint, seconds: CGFloat) -> (shortest: CGFloat, jump: CGFloat) {
+            let arrow = Jelly(scale: 1)
+            var last = position(0)
+            arrow.step(to: last, dt: 0)
+            var shortest = CGFloat.infinity, jump: CGFloat = 0, previous = arrow.points
+            for i in 1...Int((seconds * rate).rounded()) {
+                let mouse = position(CGFloat(i) / rate)
+                arrow.step(to: mouse, dt: 1 / rate)
+                shortest = min(shortest, arrow.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0)
+                jump = max(jump, frameJump(from: previous, to: arrow.points, mouseMoved: CGVector(dx: mouse.x - last.x, dy: mouse.y - last.y)))
+                previous = arrow.points
+                last = mouse
+            }
+            return (shortest, jump)
+        }
+        // 胴体は右下（止まったときの向き）。そちらや真下・右へ動かす
+        for degrees in [-67, -45, -90, 0] as [CGFloat] {
+            let direction = CGVector(dx: cos(degrees * .pi / 180), dy: sin(degrees * .pi / 180))
+            for speed in [150, 400, 1200, 3000, 6000] as [CGFloat] {
+                // 25pt だけ動かして止める
+                let nudge = shortestReach({ t in
+                    let d = min(speed * t, 25)
+                    return CGPoint(x: 300 + direction.dx * d, y: 300 + direction.dy * d)
+                }, seconds: 0.8)
+                // そのまま動き続ける
+                let start = motion({ t in CGPoint(x: 300 + direction.dx * speed * t, y: 300 + direction.dy * speed * t) }, seconds: 0.5)
+                #expect(nudge > 0.7 * rest, "\(degrees)° \(speed)pt/秒で少し動かした: \(nudge)")
+                #expect(start.shortest > 0.7 * rest, "\(degrees)° \(speed)pt/秒で動き出した: \(start.shortest)")
+                // 速く動き出したときは、胴体はマウスが1フレームに動くほどしか跳ばない（一気に裏返らない）。
+                // ゆっくり動き出したときは、向きのばねで胴体を回すぶん、マウスより大きく動いてよい
+                if speed >= 900 {
+                    #expect(start.jump < 1.2 * speed / rate + 2, "\(degrees)° \(speed)pt/秒で動き出した: 1フレームで \(start.jump)")
+                }
+            }
+        }
+        for pause in [0.08, 0.12, 0.18] as [CGFloat] {
+            let reach = shortestReach({ t in
+                if t < 0.3 { return CGPoint(x: 300 + 800 * t, y: 300) }
+                return CGPoint(x: 540 - 300 * max(t - 0.3 - pause, 0), y: 300)
+            }, seconds: 1.2)
+            #expect(reach > 0.7 * rest, "行き過ぎて \(pause) 秒止めてから戻した: \(reach)")
+        }
+        for speed in [60, 100, 140, 200] as [CGFloat] {
+            let reach = shortestReach({ t in CGPoint(x: 300 + (t < 0.6 ? speed * t : speed * (1.2 - t)), y: 300 + 18 * t) }, seconds: 1.6)
+            #expect(reach > 0.7 * rest, "\(speed)pt/秒でゆっくり折り返した: \(reach)")
+        }
+    }
+
+    // 角を曲がっても、少しあとで胴体の後ろのほうが跳ねない（道の覚えている秒数から角が抜けたときに、
+    // 後ろのほうの向きが一度に変わらない）。1フレームの動きは、マウスが1フレームに動く距離に比べて小さい
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func cornersDoNotSnapTheTail(rate: CGFloat) {
+        for scale in [1, 2] as [CGFloat] {
+            for style in [MotionStyle.standard, MotionStyle(stretch: 2, wobble: 2)] {
+                for degrees in [45, 90, -90] as [CGFloat] {
+                    for speed in [400, 700, 1000, 2000] as [CGFloat] {
+                        let arrow = Jelly(scale: scale, motion: MotionParameters(style))
+                        var mouse = CGPoint(x: 300, y: 300)
+                        arrow.step(to: mouse, dt: 0)
+                        var previous = arrow.points, worst: CGFloat = 0
+                        let corner = Int(0.3 * rate)
+                        let turned = CGVector(dx: cos(degrees * .pi / 180), dy: sin(degrees * .pi / 180))
+                        for i in 1...(2 * corner) {
+                            let last = mouse
+                            let direction = i <= corner ? CGVector(dx: 1, dy: 0) : turned
+                            mouse.x += direction.dx * speed / rate
+                            mouse.y += direction.dy * speed / rate
+                            arrow.step(to: mouse, dt: 1 / rate)
+                            if i > corner + 1 {
+                                worst = max(worst, frameJump(from: previous, to: arrow.points,
+                                                             mouseMoved: CGVector(dx: mouse.x - last.x, dy: mouse.y - last.y)))
+                            }
+                            previous = arrow.points
+                        }
+                        let label = "大きさ \(scale) 伸び \(style.stretch) \(degrees)° \(speed)pt/秒"
+                        #expect(worst < 6 * speed / rate + 3 * scale, "\(label): \(worst)")
+                    }
+                }
+            }
+        }
+    }
+
+    // どの向きに、どの速さで振っても、同じ向きへ回り続けない（止まったときの矢印の向きに沿って振ったときや、
+    // 速く振って折り返しの途中でまた折り返したときも）。手ぶれほどの小さなゆれを混ぜる
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func shakingAnyWayDoesNotSpin(rate: CGFloat) {
+        let arrowAxis = ArrowShape(scale: 1).baseAngle
+        for axis in [0, .pi / 2, arrowAxis, .pi / 4, -.pi / 4] as [CGFloat] {
+            for (amplitude, frequency) in [(30, 3), (50, 4), (100, 5), (40, 6), (20, 8)] as [(CGFloat, CGFloat)] {
+                let arrow = Jelly(scale: 1)
+                var random = SeededRandom(seed: 3)
+                var net: CGFloat = 0, worst: CGFloat = 0, last: CGFloat?
+                var t: CGFloat = 0
+                arrow.step(to: CGPoint(x: 500, y: 500), dt: 0)
+                while t < 3 {
+                    t += 1 / rate
+                    let u = amplitude * min(t / 0.2, 1) * sin(2 * .pi * frequency * t)
+                    let jitter = (random.next() - 0.5) * 0.6
+                    let mouse = CGPoint(x: 500 + u * cos(axis) - jitter * sin(axis), y: 500 + u * sin(axis) + jitter * cos(axis))
+                    arrow.step(to: mouse, dt: 1 / rate)
+                    let angle = bodyAngle(arrow, from: mouse)
+                    if let last { net += wrapAngle(angle - last) }
+                    last = angle
+                    worst = max(worst, abs(net))
+                }
+                #expect(worst < 1.5 * .pi, "向き \(Int(axis * 180 / .pi))° \(amplitude)px \(frequency)回/秒: \(worst / (2 * .pi)) 回転")
+            }
+        }
+    }
+
+    // 指も、左右に振って同じ向きへ回り続けない（ゆっくり大きく振っても、1往復ごとに1回転しない）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func handShakingDoesNotSpin(rate: CGFloat) {
+        for axis in [0, .pi / 4, .pi / 2] as [CGFloat] {
+            for (amplitude, frequency) in [(200, 2), (30, 3), (50, 4), (100, 4)] as [(CGFloat, CGFloat)] {
+                var hand = HandMotion(scale: 1)
+                var random = SeededRandom(seed: 3)
+                var net: CGFloat = 0, worst: CGFloat = 0, last: CGFloat?
+                var t: CGFloat = 0
+                hand.step(to: CGPoint(x: 500, y: 500), dt: 0, imageHeight: 32)
+                while t < 3 {
+                    t += 1 / rate
+                    let u = amplitude * min(t / 0.2, 1) * sin(2 * .pi * frequency * t)
+                    let jitter = (random.next() - 0.5) * 0.6
+                    let mouse = CGPoint(x: 500 + u * cos(axis) - jitter * sin(axis), y: 500 + u * sin(axis) + jitter * cos(axis))
+                    hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+                    if let last { net += wrapAngle(hand.angle - last) }
+                    last = hand.angle
+                    worst = max(worst, abs(net))
+                }
+                #expect(worst < 5 * .pi, "向き \(Int(axis * 180 / .pi))° \(amplitude)px \(frequency)回/秒: \(worst / (2 * .pi)) 回転")
+            }
+        }
+    }
+
+    // 止めた手がふるえる（数pxの範囲で細かく行き来する）だけなら、矢印は伸びも曲がりもせず、指も首を振らない
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func tremorLeavesTheCursorAlone(rate: CGFloat) {
+        let rest = ArrowShape(scale: 1).length
+        for amplitude in [0.5, 1.5, 3] as [CGFloat] {
+            let arrow = Jelly(scale: 1)
+            var hand = HandMotion(scale: 1)
+            var random = SeededRandom(seed: 11)
+            let center = CGPoint(x: 600, y: 390)
+            arrow.step(to: center, dt: 0)
+            hand.step(to: center, dt: 0, imageHeight: 32)
+            var shortest = CGFloat.infinity, longest: CGFloat = 0, handTurn: CGFloat = 0
+            var t: CGFloat = 0
+            while t < 3 {
+                t += 1 / rate
+                let dx = amplitude * (sin(2 * .pi * 10 * t + 1) * 0.7 + (random.next() - 0.5) * 0.6)
+                let dy = amplitude * (sin(2 * .pi * 8.3 * t + 4) * 0.7 + (random.next() - 0.5) * 0.6)
+                // 0.5pt ごとの位置（トラックパッドやマウスの細かさ）
+                let mouse = CGPoint(x: ((center.x + dx) * 2).rounded() / 2, y: ((center.y + dy) * 2).rounded() / 2)
+                arrow.step(to: mouse, dt: 1 / rate)
+                hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+                let reach = arrow.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0
+                shortest = min(shortest, reach)
+                longest = max(longest, reach)
+                handTurn = max(handTurn, abs(wrapAngle(hand.angle - .pi / 2)))
+            }
+            #expect(longest - shortest < 0.1 * rest, "±\(amplitude)pt: 矢印の長さ \(shortest)〜\(longest)")
+            #expect(handTurn < 0.1, "±\(amplitude)pt: 指が \(handTurn) ラジアン回った")
+        }
+    }
+
+    // 速く動かしたあと、別の向きへゆっくり動かし続けても、前の向きのまま（後ろ向きや横向きに進むように）残らない。
+    // 矢印も指も、元の向きへ戻るか、ゆっくり動かしている向きからあまり外れない向きを指す
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func creepingDoesNotKeepTheOldDirection(rate: CGFloat) {
+        let restBody = { () -> CGFloat in
+            let arrow = Jelly(scale: 1)
+            arrow.step(to: .zero, dt: 0)
+            return bodyAngle(arrow, from: .zero)
+        }()
+        for (degrees, speed) in [(180, 30), (180, 60), (90, 60), (-90, 40)] as [(CGFloat, CGFloat)] {
+            let arrow = Jelly(scale: 1)
+            var hand = HandMotion(scale: 1)
+            let creep = degrees * .pi / 180
+            var mouse = CGPoint(x: 300, y: 300)
+            arrow.step(to: mouse, dt: 0)
+            hand.step(to: mouse, dt: 0, imageHeight: 32)
+            var t: CGFloat = 0
+            while t < 2.4 {
+                t += 1 / rate
+                // 右へ速く 0.2 秒動かしてから、1pt ごとの位置でゆっくり動かす
+                mouse = t < 0.2 ? CGPoint(x: 300 + 1500 * t, y: 300)
+                    : CGPoint(x: (600 + cos(creep) * speed * (t - 0.2)).rounded(), y: (300 + sin(creep) * speed * (t - 0.2)).rounded())
+                arrow.step(to: mouse, dt: 1 / rate)
+                hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+            }
+            // 矢印の指す向きは、胴体の向きの反対
+            let body = bodyAngle(arrow, from: mouse)
+            let arrowOff = min(abs(wrapAngle(body - restBody)), abs(wrapAngle(body + .pi - creep)))
+            let handOff = min(abs(wrapAngle(hand.angle - .pi / 2)), abs(wrapAngle(hand.angle - creep)))
+            #expect(arrowOff < 1.1, "\(degrees)° \(speed)pt/秒: 矢印が元の向きからも動く向きからも \(arrowOff) ラジアン外れた")
+            #expect(handOff < 1.1, "\(degrees)° \(speed)pt/秒: 指が上からも動く向きからも \(handOff) ラジアン外れた")
+        }
+    }
+
+    // 速さが向きを変える速さの前後で揺れるゆっくりしたドラッグでは、向きを保つ（元の向きとの間を行き来しない）
+    @Test(arguments: [60, 240] as [CGFloat])
+    func slowDragKeepsItsDirection(rate: CGFloat) {
+        let direction = -135 * CGFloat.pi / 180
+        let arrow = Jelly(scale: 1)
+        var hand = HandMotion(scale: 1)
+        var mouse = CGPoint(x: 800, y: 800), distance: CGFloat = 0, t: CGFloat = 0
+        arrow.step(to: mouse, dt: 0)
+        hand.step(to: mouse, dt: 0, imageHeight: 32)
+        var arrowLow = CGFloat.infinity, arrowHigh = -CGFloat.infinity, handLow = CGFloat.infinity, handHigh = -CGFloat.infinity
+        while t < 5 {
+            t += 1 / rate
+            distance += (80 + 30 * sin(2 * .pi * t / 1.2)) / rate
+            mouse = CGPoint(x: 800 + cos(direction) * distance, y: 800 + sin(direction) * distance)
+            arrow.step(to: mouse, dt: 1 / rate)
+            hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+            guard t > 1 else { continue }
+            let body = wrapAngle(bodyAngle(arrow, from: mouse) - direction - .pi)
+            arrowLow = min(arrowLow, body)
+            arrowHigh = max(arrowHigh, body)
+            let pointing = wrapAngle(hand.angle - direction)
+            handLow = min(handLow, pointing)
+            handHigh = max(handHigh, pointing)
+        }
+        #expect(arrowHigh - arrowLow < 0.3, "矢印の向きが \(arrowHigh - arrowLow) ラジアン揺れた")
+        #expect(handHigh - handLow < 0.3, "指の向きが \(handHigh - handLow) ラジアン揺れた")
+    }
+
+    // ほかのアプリがポインタを遠くへ動かした（1フレームで飛んだ）ときは、新しい位置で止まっている形から始め直す。
+    // 飛んだ線に沿って伸びたり、飛んだ向きへ回ったりしない
+    @Test func jumpsStartOverAtTheNewPosition() {
+        for distance in [300, 1500] as [CGFloat] {
+            let arrow = Jelly(scale: 1), beam = IBeam(scale: 1)
+            var hand = HandMotion(scale: 1)
+            let start = CGPoint(x: 300, y: 300), end = CGPoint(x: 300 + distance, y: 300 + distance * 0.3)
+            for figure in [arrow, beam] as [CursorFigure] { figure.step(to: start, dt: 0) }
+            hand.step(to: start, dt: 0, imageHeight: 32)
+            for _ in 0..<30 {
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: start, dt: 1 / 120) }
+                hand.step(to: start, dt: 1 / 120, imageHeight: 32)
+            }
+            let arrowAtRest = arrow.points.map { CGPoint(x: $0.x - start.x, y: $0.y - start.y) }
+            let beamAtRest = beam.points.map { CGPoint(x: $0.x - start.x, y: $0.y - start.y) }
+            var arrowMoved: CGFloat = 0, beamMoved: CGFloat = 0, handTurn: CGFloat = 0
+            for _ in 0..<60 {
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: end, dt: 1 / 120) }
+                hand.step(to: end, dt: 1 / 120, imageHeight: 32)
+                for (p, q) in zip(arrow.points, arrowAtRest) { arrowMoved = max(arrowMoved, hypot(p.x - end.x - q.x, p.y - end.y - q.y)) }
+                for (p, q) in zip(beam.points, beamAtRest) { beamMoved = max(beamMoved, hypot(p.x - end.x - q.x, p.y - end.y - q.y)) }
+                handTurn = max(handTurn, abs(wrapAngle(hand.angle - .pi / 2)))
+            }
+            #expect(arrowMoved < 0.5, "\(distance)pt 飛んだ: 矢印が形を変えた \(arrowMoved)")
+            #expect(beamMoved < 0.5, "\(distance)pt 飛んだ: I 字が形を変えた \(beamMoved)")
+            #expect(handTurn < 0.01, "\(distance)pt 飛んだ: 指が \(handTurn) ラジアン回った")
+            #expect(arrow.isSettled && beam.isSettled && hand.isSettled)
+        }
+        // 押したまま飛んでも、クリックのつぶれはそのまま（飛んだ距離をドラッグとみなさない）
+        let pressedArrow = Jelly(scale: 1)
+        let start = CGPoint(x: 300, y: 300), end = CGPoint(x: 1300, y: 600)
+        pressedArrow.step(to: start, dt: 0, pressed: true)
+        for _ in 0..<30 { pressedArrow.step(to: start, dt: 1 / 120, pressed: true) }
+        let squashed = pressedArrow.points.map { hypot($0.x - start.x, $0.y - start.y) }.max() ?? 0
+        for _ in 0..<30 { pressedArrow.step(to: end, dt: 1 / 120, pressed: true) }
+        let afterJump = pressedArrow.points.map { hypot($0.x - end.x, $0.y - end.y) }.max() ?? 0
+        #expect(abs(afterJump - squashed) < 0.1, "押したまま飛んだら、つぶれが \(squashed) から \(afterJump) に変わった")
+        // 表示が詰まったフレーム（経過時間は上限の 1/30 秒）に速いフリックで 600pt 動いても、飛んだとはみなさない
+        let flick = Jelly(scale: 1)
+        var mouse = CGPoint(x: 300, y: 300)
+        flick.step(to: mouse, dt: 0)
+        for _ in 0..<24 {
+            mouse.x += 6000.0 / 120
+            flick.step(to: mouse, dt: 1 / 120)
+        }
+        mouse.x += 600
+        flick.step(to: mouse, dt: CGFloat(Tuning.Render.maxFrameStep))
+        let stretched = flick.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0
+        #expect(stretched > 3 * ArrowShape(scale: 1).length, "表示が詰まったフリックで伸びが消えた: \(stretched)")
+    }
+
+    // 表示が詰まって1フレームが長くなっても（0.1〜0.5 秒）、ばねが暴れず、形はマウスの近くに収まる
+    @Test func longFramesStayCalm() {
+        for dt in [0.1, 0.3, 0.5] as [CGFloat] {
+            let arrow = Jelly(scale: 1), beam = IBeam(scale: 1)
+            var hand = HandMotion(scale: 1)
+            var mouse = CGPoint(x: 300, y: 300)
+            for figure in [arrow, beam] as [CursorFigure] { figure.step(to: mouse, dt: 0) }
+            hand.step(to: mouse, dt: 0, imageHeight: 32)
+            for i in 1...36 {
+                mouse = CGPoint(x: 300 + 1500 * CGFloat(i) / 120, y: 300)
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: mouse, dt: 1 / 120) }
+                hand.step(to: mouse, dt: 1 / 120, imageHeight: 32)
+            }
+            var beamReach: CGFloat = 0, handScale: CGFloat = 0, finite = true
+            for _ in 0..<60 {
+                for figure in [arrow, beam] as [CursorFigure] { figure.step(to: mouse, dt: dt) }
+                hand.step(to: mouse, dt: dt, imageHeight: 32)
+                finite = finite && (arrow.points + beam.points).allSatisfy { $0.x.isFinite && $0.y.isFinite }
+                beamReach = max(beamReach, beam.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0)
+                handScale = max(handScale, hand.lengthScale)
+            }
+            #expect(finite, "\(dt) 秒のフレーム: 形が数でなくなった")
+            #expect(beamReach < 20, "\(dt) 秒のフレーム: I 字が \(beamReach)pt まで広がった")
+            #expect(handScale < 2, "\(dt) 秒のフレーム: 指が \(handScale) 倍に伸びた")
+            #expect(arrow.isSettled && beam.isSettled && hand.isSettled, "\(dt) 秒のフレーム: 落ち着かない")
         }
     }
 

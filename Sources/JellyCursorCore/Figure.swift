@@ -15,6 +15,16 @@ extension Figure {
     }
 }
 
+// マウスが1フレームのうちに、手では動かせないほど遠くへ移ったか（ほかのアプリがポインタを動かしたときなど）。
+// そのときは、伸びや向きを、新しい位置で止まっている状態から始め直す（飛んだ線に沿って大きく伸びて回らないように）
+// 表示が詰まったフレームは、経過時間が上限（Tuning.Render.maxFrameStep）で切られていて、本当はもっと長いことがある。
+// そのフレームで速く動かしただけで飛んだとみなさないよう、もっと遠くへ移ったときだけ飛んだとみなす
+func isJump(from last: CGPoint, to mouse: CGPoint, dt: CGFloat) -> Bool {
+    let distance = hypot(mouse.x - last.x, mouse.y - last.y)
+    if dt >= CGFloat(Tuning.Render.maxFrameStep) - 1e-9 { return distance > Tuning.Jump.stalledDistance }
+    return distance > Tuning.Jump.distance && (dt <= 0 || distance / dt > Tuning.Jump.speed)
+}
+
 // 輪郭を変形させて描くもの。矢印（Jelly）と I 字（IBeam）
 package protocol CursorFigure: Figure {
     var points: [CGPoint] { get }

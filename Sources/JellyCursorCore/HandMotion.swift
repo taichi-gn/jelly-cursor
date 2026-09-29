@@ -25,6 +25,7 @@ package struct HandMotion {
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
     private var squish: ClickSquish
+    private let motion: MotionParameters
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
         heading = Heading(restAngle: .pi / 2, motion: motion)
@@ -32,10 +33,22 @@ package struct HandMotion {
         stretchSpring = SpringValue(omega: Tuning.Hand.omega, dampingRatio: motion.handDampingRatio)
         maxStretch = Tuning.Hand.maxStretch * motion.stretch
         squish = ClickSquish(motion: motion)
+        self.motion = motion
     }
 
     // imageHeight は描く画像の高さ。伸びのずれをピクセルに直して、落ち着いたかを決めるのに使う
     package mutating func step(to mouse: CGPoint, dt: CGFloat, imageHeight: CGFloat, pressed: Bool = false) {
+        // ポインタが飛んだら、新しい位置で止まっている状態から始め直す（飛んだ向きへ大きく回らないように）
+        if let lastMouse, isJump(from: lastMouse, to: mouse, dt: dt) {
+            squish.follow(jumpTo: mouse)
+            heading = Heading(restAngle: .pi / 2, motion: motion)
+            trail = Trail()
+            stretchSpring = SpringValue(omega: Tuning.Hand.omega, dampingRatio: motion.handDampingRatio)
+            smoothedVel = .zero
+            lastTurn = 0
+            angle = .pi / 2
+            self.lastMouse = nil
+        }
         squish.step(pressed: pressed, mouse: mouse, dt: dt)
         if let lastMouse, dt > 0 {
             heading.turn(from: lastMouse, to: mouse, dt: dt)
@@ -71,8 +84,10 @@ package struct HandMotion {
         }
         var turn = wrapAngle(atan2(mouse.y - behind.y, mouse.x - behind.x) - heading.angle)
         // ばねの向きとほぼ逆の道（止まった指から真下へ動き出したときなど）は、右回りと左回りのどちらでもほぼ同じ角度なので、
-        // 手ぶれで回る側が入れ替わって指が行ったり来たりしないよう、前のフレームと同じ側へ回す
-        if abs(turn) > Tuning.Hand.oppositeTurn, turn * lastTurn < 0 {
+        // 手ぶれで回る側が入れ替わって指が行ったり来たりしないよう、前のフレームと同じ側へ回す。
+        // 前のフレームもほぼ逆だったときだけにする（前のフレームで少し遅れていただけなら、近い側へ回す。
+        // そうしないと、左右に振るたびに遠回りして、同じ向きへ回り続ける）
+        if abs(turn) > Tuning.Hand.oppositeTurn, abs(lastTurn) > Tuning.Hand.oppositeTurn, turn * lastTurn < 0 {
             turn += turn > 0 ? -2 * .pi : 2 * .pi
         }
         lastTurn = turn

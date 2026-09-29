@@ -6,38 +6,60 @@ import CoreGraphics
 package final class Jelly: CursorFigure {
     private let shape: ArrowShape
     package private(set) var points: [CGPoint]
-    private var trail = Trail()
+    private var trail: Trail
     private var heading: Heading
     private var length: CGFloat
     private var lastMouse = CGPoint.zero
     private var started = false
     package private(set) var isSettled = false
     private let stretchScale: CGFloat
+    private let motion: MotionParameters
     // 道が折り返したときに、胴体をまっすぐにして先端のまわりで回している間の向き（先端から胴体への向き）
     private var pivot: Pivot?
     // 胴体を道に沿わせる度合い。回している間は 0 へ寄せ、回し終えたら 1 へ戻す
     private var pathFollow: CGFloat = 1
     // 前のフレームで描いた胴体の向き（先端から胴体の中ほどへ）。回し始めの向きと、クリックでつぶす向きにする
     private var bodyBack = CGVector(dx: 0, dy: -1)
+    // 前のフレームで描いた胴体の、中ほどから見た尾の側（+ で左）。曲がった胴体をまっすぐにして回すとき、曲がっている側へ回す
+    private var bodyCurl: CGFloat = 0
     private var squish: ClickSquish
+    // 道に沿わせてよい度合い。道の向きがまっすぐな胴体の向きと逆のうちは下げ、向きが回ってそろうにつれて上げる
+    private var pathGate: CGFloat = 1
+    // 道に沿わせたい状態が続いている秒数
+    private var engagedTime: CGFloat = 0
+    // 折り返しで胴体を回した向きの合計（ラジアン。+ で左回り）。左右に振り続けたときに、同じ向きへ回り続けず
+    // 巻き戻すよう、回す側を選ぶのに使う。しばらく折り返さなければ忘れる
+    private var pivotTurns: CGFloat = 0
+    private var sincePivot: CGFloat = 0
+    // 回す側を決めかねたとき（止まったときの向きに沿って振ったとき）に回す側。毎回同じ側へ振れるように覚えておく
+    private var tieSide: CGFloat = 1
 
     private struct Pivot {
         var angle: CGFloat
         var velocity: CGFloat = 0
         // 回る側（+1 で左回り）。先端が折り返しから離れて回す先が決まったときに決める
         var side: CGFloat?
+        // 回る側を決めたときの回す先の向き。回している間にまた折り返して回す先が大きく変わったら、回る側を決め直す
+        var sideTarget: CGFloat = 0
+        // 回し始めたときに胴体が曲がっていた側（+1 で左、0 でまっすぐ）
+        var curl: CGFloat = 0
+        // 前のフレームの回す先の向き。折り返しが抜けたあと、回す先が回り続けても（円を描き続けても）遅れずに追うため
+        var lastTarget: CGFloat?
     }
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
         shape = ArrowShape(scale: scale)
+        trail = Self.makeTrail(shape: shape, stretch: motion.stretch)
         heading = Heading(restAngle: shape.baseAngle, motion: motion)
         stretchScale = motion.stretch
+        self.motion = motion
         squish = ClickSquish(motion: motion)
         length = shape.length
         points = Array(repeating: .zero, count: shape.vertices.count)
     }
 
     package func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool) {
+        if started, isJump(from: lastMouse, to: mouse, dt: dt) { restart(at: mouse) }
         if !started {
             started = true
         } else if dt > 0 {
@@ -50,11 +72,14 @@ package final class Jelly: CursorFigure {
         let fold = heading.commitment > 0 ? trail.fold() : nil
         updatePivot(mouse: mouse, fold: fold, moved: moved, dt: dt)
 
-        // 回している間は伸びを戻し、短くしてから回す
-        let stretch = pivot == nil ? min(trail.length, Tuning.Trail.maxStretch) : 0
+        updatePathGate(mouse: mouse, dt: dt)
+        // 回している間は伸びを戻し、短くしてから回す。回し終えたら、道に沿わせるのに合わせて少しずつ伸ばす（一度に伸ばすと跳ねて見える）。
+        // 道の向きが胴体の向きと逆で、まだ道に沿わせていないうちは伸ばさない（まっすぐなまま前へ伸びないように）
+        let stretch = pivot == nil ? min(trail.length, Tuning.Trail.maxStretch) * pathFollow * pathGate : 0
         var target = shape.length + stretch * stretchScale * heading.commitment
-        // 道が折り返したら、胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）
-        if let fold, fold.distance < min(length, trail.length) {
+        // 道が折り返したら、胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）。
+        // 今の長さが折り返しに届いていなくても、伸びる途中で越えないよう、いつも抑える
+        if let fold {
             target = min(target, max(shape.length, fold.distance))
         }
         if dt > 0 {
@@ -69,6 +94,26 @@ package final class Jelly: CursorFigure {
         isSettled = worst < Tuning.Settle.threshold && pivot == nil && pathFollow == 1
     }
 
+    // 胴体がいちばん伸びたときの長さまで、通った道を覚えておく
+    private static func makeTrail(shape: ArrowShape, stretch: CGFloat) -> Trail {
+        Trail(keep: shape.length + Tuning.Trail.maxStretch * stretch + 2 * Tuning.Trail.tangentWindow)
+    }
+
+    // ポインタが飛んだとき、動きを止まった状態から始め直す（クリックでつぶれている状態はそのまま）
+    private func restart(at mouse: CGPoint) {
+        squish.follow(jumpTo: mouse)
+        trail = Self.makeTrail(shape: shape, stretch: stretchScale)
+        heading = Heading(restAngle: shape.baseAngle, motion: motion)
+        length = shape.length
+        pivot = nil
+        pathFollow = 1
+        pathGate = 1
+        engagedTime = 0
+        pivotTurns = 0
+        sincePivot = 0
+        started = false
+    }
+
     // 矢じり（先端から普段の長さのうち）で道が折り返したら、道に沿わせず、まっすぐにして先端のまわりで回す。
     // 道に沿わせたままだと、幅の広い矢じりが折り返しで自分と重なり、形が崩れて見える。
     // ほぼまっすぐ戻ったときは、速いと1フレームで矢じりより後ろまで戻ることがあるので、そのフレームで動いたぶんまでは
@@ -79,36 +124,63 @@ package final class Jelly: CursorFigure {
         var folded = false
         if let fold {
             let head = shape.length + (fold.cosine < cos(Tuning.Fold.reversalAngle) ? moved : 0)
-            folded = fold.distance < (pivot == nil ? min(span, head) : span)
+            // 回し始めたら、折り返しが胴体より後ろへ抜けるまで続ける。ゆっくり折り返したときは直近の道が短いので、
+            // 回す先が決まる（先端が折り返しから minTurnTravel 離れる）までは抜けたとみなさない（回さないまま終わらないように）
+            folded = fold.distance < (pivot == nil ? min(span, head) : max(span, Tuning.Fold.minTurnTravel + Tuning.Fold.reference))
         }
         if folded, pivot == nil {
-            pivot = Pivot(angle: atan2(bodyBack.dy, bodyBack.dx))
+            pivot = Pivot(angle: atan2(bodyBack.dy, bodyBack.dx),
+                          curl: abs(bodyCurl) > Tuning.Fold.curlAngle ? (bodyCurl > 0 ? 1 : -1) : 0)
         }
         if var p = pivot {
             // 回す先は、先端から折り返し（無くなったら胴体の長さ）までの道の向き。新しく進む向きの後ろ。
             // 先端が折り返しから少し離れるまでは回さない（行き過ぎて少し戻したときに、くるっと向きを変えないように）
-            let end = trail.point(at: min(max(fold?.distance ?? span, Tuning.Fold.reference), trail.length))
+            // ゆっくり折り返したときは直近の道が短いので、覚えている道の形まで見る（回す先が先端の近くにとどまって回せないことがないように）
+            let end = trail.point(at: min(max(fold?.distance ?? span, Tuning.Fold.reference), trail.pathLength))
+            // ゆっくり折り返したときは、胴体の端もゆっくり回す（先端がゆっくり動いているのに、くるっと一瞬で回らないように）
+            let tipSpeed = trail.length / Tuning.Trail.duration
+            let tailSpeed = min(max(tipSpeed * Tuning.Fold.tailSpeedRatio, Tuning.Fold.minTailSpeed), Tuning.Fold.maxTailSpeed)
+            let maxSpeed = tailSpeed / length
             var error: CGFloat = 0
+            // 回す先が回る速さ。ばねはこの速さに合わせて回しながら追う（合わせないと、円を描き続ける間はいつまでも
+            // 回す先に追いつけず、回し終わらない。回している間は伸びないので、短いままになる）
+            var targetRate: CGFloat = 0
             if hypot(end.x - mouse.x, end.y - mouse.y) > Tuning.Fold.minTurnTravel {
                 let target = atan2(end.y - mouse.y, end.x - mouse.x)
-                let side = p.side ?? turnSide(from: p.angle, to: target)
-                p.side = side
+                // 折り返しを見ている間は、回す先が折り返しの位置で決まり、道の向きとは関係なく動くので合わせない
+                if !folded, let last = p.lastTarget, dt > 0 {
+                    targetRate = min(max(wrapAngle(target - last) / dt, -maxSpeed), maxSpeed)
+                }
+                p.lastTarget = folded ? nil : target
+                if p.side != nil, abs(wrapAngle(target - p.sideTarget)) > .pi / 2 { p.side = nil }
+                if p.side == nil {
+                    p.side = turnSide(from: p.angle, to: target, curl: p.curl)
+                    p.curl = 0
+                    p.sideTarget = target
+                }
+                let side = p.side ?? 1
                 error = wrapAngle(target - p.angle)
                 if abs(error) > Tuning.Fold.oppositeTurn, error * side < 0 {
                     error += error > 0 ? -2 * .pi : 2 * .pi
                 }
+            } else {
+                p.lastTarget = nil
             }
             let spring = DampedSpring(omega: Tuning.Fold.omega, dampingRatio: 1)
-            let maxSpeed = Tuning.Fold.maxTailSpeed / length
-            let h = dt / CGFloat(Tuning.Settle.substeps)
-            for _ in 0..<Tuning.Settle.substeps {
-                p.velocity += spring.velocityChange(error: error, velocity: p.velocity, h: h)
+            let n = substepCount(for: dt)
+            let h = dt / CGFloat(n)
+            let before = p.angle
+            for _ in 0..<n {
+                p.velocity += spring.velocityChange(error: error, velocity: p.velocity - targetRate, h: h)
                 p.velocity = min(max(p.velocity, -maxSpeed), maxSpeed)
                 p.angle += p.velocity * h
                 error -= p.velocity * h
             }
+            pivotTurns += p.angle - before
             p.angle = wrapAngle(p.angle)
-            if !folded && abs(error) < Tuning.Fold.finishAngle {
+            // 回す先が回り続けていると、1フレームのうちに回す先が進むぶん、フレームの終わりには半分ほど遅れて見える。
+            // その遅れを除いて、追いついたかを見る（画面の書き換えが遅いほど遅れが大きく、回し終われなくなるので）
+            if !folded && abs(error + targetRate * dt / 2) < Tuning.Fold.finishAngle {
                 // 回し終えた向きから、ふだんの向きの動き（進行方向へ向ける・止めたら左上へ戻す）を続ける
                 heading.align(angle: p.angle + .pi, velocity: p.velocity)
                 pivot = nil
@@ -116,6 +188,8 @@ package final class Jelly: CursorFigure {
                 pivot = p
             }
         }
+        sincePivot = pivot == nil ? sincePivot + dt : 0
+        if sincePivot > Tuning.Fold.turnMemory { pivotTurns = 0 }
         if dt > 0 {
             let target: CGFloat = pivot == nil ? 1 : 0
             let tau = target < pathFollow ? Tuning.Fold.followDrop : Tuning.Fold.followRecover
@@ -124,26 +198,76 @@ package final class Jelly: CursorFigure {
         }
     }
 
-    // 回る側（+1 で左回り、-1 で右回り）。ふつうは近い側へ回る。ほぼ逆向きへ回すときは、止まったときの胴体の向き（右下）を
-    // 通る側へ回す。左右に振ったときに、同じ側へ回り続けて（プロペラのように）回らず、ぶら下がるように左右へ振れる。
-    // 道の見かけの曲がり（画面の書き換えの速さで変わる）には頼らない
-    private func turnSide(from angle: CGFloat, to target: CGFloat) -> CGFloat {
+    // 回る側（+1 で左回り、-1 で右回り）。ふつうは近い側へ回る。ほぼ逆向きへ回すときは:
+    // - それまでの折り返しで回していたら、巻き戻す側へ回す。左右に振り続けても、同じ側へ回り続けず（プロペラのように回らず）、
+    //   振り子のように行き来する
+    // - 回し始めたときに胴体が大きく曲がっていたら（円を描いていて逆に回したときなど）、曲がっている側へ回す。
+    //   まっすぐにするときに、胴体の後ろのほうが大きく跳ばないように
+    // - それ以外は、止まったときの胴体の向き（右下）を通る側へ回す。ぶら下がるように振れる。
+    //   その向きに沿って振ったとき（どちら側でも同じくらいのとき）は、前と同じ側へ回す
+    // 道の少しの曲がり（画面の書き換えの速さで変わる）には頼らない
+    private func turnSide(from angle: CGFloat, to target: CGFloat, curl: CGFloat) -> CGFloat {
         let error = wrapAngle(target - angle)
         guard abs(error) > Tuning.Fold.oppositeTurn else { return error >= 0 ? 1 : -1 }
+        if abs(pivotTurns) > Tuning.Fold.unwindTurn { return pivotTurns > 0 ? -1 : 1 }
+        if curl != 0 { return curl }
+        let rest = shape.baseAngle + .pi
+        if abs(wrapAngle(rest - angle)) < Tuning.Fold.restTie || abs(wrapAngle(rest - target)) < Tuning.Fold.restTie {
+            return tieSide
+        }
         func counterclockwise(_ a: CGFloat) -> CGFloat {
             let r = a.truncatingRemainder(dividingBy: 2 * .pi)
             return r < 0 ? r + 2 * .pi : r
         }
-        let rest = shape.baseAngle + .pi
-        return counterclockwise(rest - angle) < counterclockwise(target - angle) ? 1 : -1
+        tieSide = counterclockwise(rest - angle) < counterclockwise(target - angle) ? 1 : -1
+        return tieSide
+    }
+
+    // まっすぐにしたときの胴体の向き（先端から胴体へ）
+    private var restBack: CGVector {
+        pivot.map { CGVector(dx: cos($0.angle), dy: sin($0.angle)) } ?? heading.axis.negated
+    }
+
+    // 道に沿わせたい度合い。道が胴体より短いうち・動き始めてあまり動いていないうち・回している間は、まっすぐな胴体に寄せる
+    private var pathEngagement: CGFloat {
+        min(trail.length / shape.length, 1) * heading.commitment * pathFollow
+    }
+
+    // 胴体は、まっすぐな形と道に沿った形を位置で混ぜて作る。逆を向いた2つの間で沿わせる度合いを増やすと、途中で胴体が
+    // 先端へ縮んで小さな塊に見える（止まった矢印から右下へ動き出したとき・少し動かしたとき・行き過ぎて戻したときなど）。
+    // そこで、道の向きがまっすぐな胴体の向きと逆のうちは道に沿わせず、向きが回ってそろうにつれて沿わせる。
+    // すでに道に沿っているときは、向きが遅れても下げない。道に沿わせたい状態が続いているのに向きがそろわないとき
+    // （速く円を描き始めて、向きが回る道に追いつけないときなど）は、少し待ってから沿わせる
+    private func updatePathGate(mouse: CGPoint, dt: CGFloat) {
+        guard dt > 0 else { return }
+        var target: CGFloat = 1
+        if trail.length > 0, let path = (trail.point(at: min(trail.length, shape.length / 2)) - mouse).normalized {
+            let back = restBack
+            let cosine = path.dx * back.dx + path.dy * back.dy
+            let t = min(max((cosine - Tuning.Trail.opposingCosine) / (Tuning.Trail.opposedCosine - Tuning.Trail.opposingCosine), 0), 1)
+            target = 1 - t * t * (3 - 2 * t)
+        }
+        if pathEngagement >= Tuning.Trail.gateHold {
+            // 速く動き出して1フレームで沿わせたい状態になったときは、下げてから保つ（下げる前に保って、逆向きのまま沿わせないように）
+            if engagedTime == 0 { pathGate = min(pathGate, target) }
+            engagedTime += dt
+            let forced = min(max((engagedTime - Tuning.Trail.gateForceDelay) / Tuning.Trail.gateForceTime, 0), 1)
+            target = max(target, pathGate, forced)
+        } else {
+            engagedTime = 0
+        }
+        let tau = target < pathGate ? Tuning.Trail.gateCloseTime : Tuning.Trail.gateOpenTime
+        pathGate += (target - pathGate) * (1 - exp(-dt / tau))
+        if pathGate > 0.999 { pathGate = 1 }
     }
 
     // 矢印の軸を道筋に沿って曲げ、各頂点をその地点の向きに対して横へずらす
     private func layOut(at mouse: CGPoint) {
-        let restBack = pivot.map { CGVector(dx: cos($0.angle), dy: sin($0.angle)) } ?? heading.axis.negated
-        let spine = Spine(mouse: mouse, trail: trail, restBack: restBack,
-                          blend: min(trail.length / shape.length, 1) * heading.commitment * pathFollow)
+        let spine = Spine(mouse: mouse, trail: trail, restBack: restBack, blend: pathEngagement * pathGate)
         bodyBack = (spine.point(at: shape.length / 2) - mouse).normalized ?? restBack
+        if let tail = (spine.point(at: length) - mouse).normalized {
+            bodyCurl = wrapAngle(atan2(tail.dy, tail.dx) - atan2(bodyBack.dy, bodyBack.dx))
+        }
         let stretch = length / shape.length
         let width = pow(1 / stretch, Tuning.Trail.thinning)
         let w = Tuning.Trail.tangentWindow
@@ -181,10 +305,10 @@ private struct Spine {
         let straight = CGPoint(x: mouse.x + restBack.dx * s, y: mouse.y + restBack.dy * s)
         guard blend > 0 else { return straight }
         let onPath: CGPoint
-        if s <= trail.length {
+        if s <= trail.pathLength {
             onPath = trail.point(at: s)
         } else {
-            let end = trail.point(at: trail.length), extra = s - trail.length
+            let end = trail.point(at: trail.pathLength), extra = s - trail.pathLength
             onPath = CGPoint(x: end.x + pathBack.dx * extra, y: end.y + pathBack.dy * extra)
         }
         return CGPoint(x: straight.x + (onPath.x - straight.x) * blend,
