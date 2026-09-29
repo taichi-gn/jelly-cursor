@@ -46,6 +46,8 @@ package struct ExcludedApp: Codable, Equatable, Hashable, Identifiable, Sendable
 package struct SettingsValues: Codable, Equatable, Sendable {
     package var isEnabled = true
     package var motion = MotionStyle.standard
+    // クリックしたときに、押すとつぶれ、離すと弾んで戻る
+    package var clickBounce = true
     package var cursorKinds = CursorKinds()
     package var pauseWhenReduceMotion = true
     package var pauseOnLowPower = true
@@ -57,7 +59,7 @@ package struct SettingsValues: Codable, Equatable, Sendable {
     package init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, motion, cursorKinds, pauseWhenReduceMotion, pauseOnLowPower, pauseInFullScreen
+        case isEnabled, motion, clickBounce, cursorKinds, pauseWhenReduceMotion, pauseOnLowPower, pauseInFullScreen
         case excludedApps, showsMenuBarIcon, shortcut
     }
 
@@ -66,6 +68,7 @@ package struct SettingsValues: Codable, Equatable, Sendable {
         let d = SettingsValues()
         isEnabled = (try? c.decode(Bool.self, forKey: .isEnabled)) ?? d.isEnabled
         motion = (try? c.decode(MotionStyle.self, forKey: .motion)) ?? d.motion
+        clickBounce = (try? c.decode(Bool.self, forKey: .clickBounce)) ?? d.clickBounce
         cursorKinds = (try? c.decode(CursorKinds.self, forKey: .cursorKinds)) ?? d.cursorKinds
         pauseWhenReduceMotion = (try? c.decode(Bool.self, forKey: .pauseWhenReduceMotion)) ?? d.pauseWhenReduceMotion
         pauseOnLowPower = (try? c.decode(Bool.self, forKey: .pauseOnLowPower)) ?? d.pauseOnLowPower
@@ -76,6 +79,9 @@ package struct SettingsValues: Codable, Equatable, Sendable {
     }
 
     package var preset: MotionPreset? { MotionPreset(matching: motion) }
+
+    // 描く側に渡す動きの値
+    package var motionParameters: MotionParameters { MotionParameters(motion, clickBounce: clickBounce) }
 
     package func isExcluded(bundleID: String?) -> Bool {
         guard let bundleID else { return false }

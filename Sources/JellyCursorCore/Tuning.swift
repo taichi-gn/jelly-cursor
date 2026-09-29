@@ -44,6 +44,55 @@ package enum Tuning {
         static let returnSettleDampingRatio: CGFloat = 1.0
     }
 
+    // 道が胴体の長さのうちで折り返したとき（左右に振ったときなど）。道に沿わせると胴体が自分と重なって崩れて見えるので、
+    // 伸びを戻しながら、胴体をまっすぐにして先端のまわりで新しい向きへ回す
+    enum Fold {
+        // 先端近くの道の向きから、この角度より大きく曲がっていたら折り返しとみなす。
+        // 90度の曲がり角（上へ動いてから横へ）は、これまでどおり道に沿って曲げる
+        static let angle: CGFloat = 100 * .pi / 180
+        // この角度より大きく曲がった（ほぼまっすぐ戻った）ときは、1フレームで矢じりより後ろまで戻っても回す
+        static let reversalAngle: CGFloat = 150 * .pi / 180
+        // 先端近くの道の向きを測る長さ（pt）。短いと手ぶれで折り返しと見てしまう
+        static let reference: CGFloat = 3
+        // 回すばね。行き過ぎず、短い矢印なら約0.06秒でほぼ回りきる
+        static let omega: CGFloat = 55
+        // 回している間に胴体の端が動く速さの上限（pt/秒）。長いうちはゆっくり、縮むにつれて速く回る
+        static let maxTailSpeed: CGFloat = 1500
+        // 回す先がこの角度より大きく離れていたら、ほぼ逆向きとみなし、決めた側へ回す（右回りと左回りが入れ替わらないように）
+        static let oppositeTurn: CGFloat = 2.6
+        // 先端が折り返しからこの道のり(pt)離れるまでは回さない。行き過ぎて少し戻したときに、向きを変えないように
+        static let minTurnTravel: CGFloat = 10
+        // 折り返しが胴体より後ろへ抜け、回す先との差がこれ（ラジアン）より小さくなったら、道に沿わせるのに戻る
+        static let finishAngle: CGFloat = 0.15
+        // 道に沿わせるのをやめる速さと、戻す速さ（秒）
+        static let followDrop: CGFloat = 0.008
+        static let followRecover: CGFloat = 0.04
+    }
+
+    // クリックしたとき。押すとクリック位置へ向けてつぶれ、離すと少し伸びる側へ弾んでから戻る
+    package enum Click {
+        // 押したときにつぶれる割合（伸び 100% のとき）。横には 1/√(1 - つぶれ) 倍に太る
+        static let depth: CGFloat = 0.16
+        // つぶれと伸びの上限。形が裏返らないように
+        static let maxSquash: CGFloat = 0.35
+        static let maxStretch: CGFloat = 0.3
+        // 押したとき。約0.05秒で、ほとんど行き過ぎずにつぶれる
+        static let pressOmega: CGFloat = 45
+        static let pressDampingRatio: CGFloat = 0.8
+        // 離したとき。つぶれの約3割だけ伸びる側へ行き過ぎて、約0.4秒で戻る（弾み 100% のとき）
+        static let releaseOmega: CGFloat = 30
+        static let releaseDampingRatio: CGFloat = 0.35
+        // 押した位置から dragDeadZone(pt) までは手のふるえとみなし、そこから dragRelease(pt) 離れるとつぶれを戻しきる
+        // （ドラッグの間はふつうの動きにする）
+        static let dragDeadZone: CGFloat = 4
+        static let dragRelease: CGFloat = 12
+        // これより短いクリック（トラックパッドのタップなど）も、この秒数は押したことにする。
+        // ボタンを見に行く間（眠っている間は1/60秒）より短いクリックも見逃さず、つぶれて弾むのが見えるように
+        package static let minimumPress: TimeInterval = 0.08
+        // 戻りきったとみなす、つぶれの割合
+        static let restSnap: CGFloat = 0.001
+    }
+
     // 文字の上の I 字。進行方向には回さず、速さで形だけ変える。値はすべて倍率1のときの比
     enum IBeam {
         // 横に速く動かすと縦棒が最大 1 + maxWiden 倍の太さになる。widenSpeed(pt/秒)でその約76%
@@ -67,6 +116,8 @@ package enum Tuning {
         // 縦棒と飾りの境目（中心からの縦の距離）。標準の I 字は縦棒の直線部分が 5.5 まで続く
         static let stemHalfHeight: CGFloat = 5.5
         static let serifStart: CGFloat = 7.5
+        // 幅と高さの倍率の下限。戻りの行き過ぎで形が裏返らないように
+        static let minScale: CGFloat = 0.3
     }
 
     // リンクの上の指。回り方は矢印と同じ Turn の値を使う（少し動かしただけでは回らず、止めると上向きに戻る）

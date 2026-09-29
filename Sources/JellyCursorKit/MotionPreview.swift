@@ -2,18 +2,18 @@ import AppKit
 import JellyCursorCore
 import SwiftUI
 
-// 設定画面のプレビュー。決まった道筋（PreviewScript）でマウスを動かしたときの矢印と I 字を、今の設定の動きで描く。
+// 設定画面のプレビュー。決まった道筋（PreviewScript）でマウスを動かし、クリックしたときの矢印と I 字を、今の設定の動きで描く。
 // SwiftUI の TimelineView は、macOS 26 で書き換えが届かず何も描かれないことがあったので、
 // 実際のカーソルと同じく、層（CAShapeLayer）を画面の書き換えに合わせて動かす
 struct MotionPreview: NSViewRepresentable {
-    let style: MotionStyle
+    let motion: MotionParameters
 
     func makeNSView(context: Context) -> MotionPreviewView {
         MotionPreviewView()
     }
 
     func updateNSView(_ view: MotionPreviewView, context: Context) {
-        view.style = style
+        view.motion = motion
     }
 }
 
@@ -22,10 +22,9 @@ final class MotionPreviewView: NSView {
     private static let scale: CGFloat = 2
     private static let margin: CGFloat = 26
 
-    var style = MotionStyle.standard {
+    var motion = MotionParameters.standard {
         didSet {
-            guard style != oldValue else { return }
-            let motion = MotionParameters(style)
+            guard motion != oldValue else { return }
             figures = [Jelly(scale: Self.scale, motion: motion), IBeam(scale: Self.scale, motion: motion)]
             advance(dt: 0)
         }
@@ -148,7 +147,7 @@ final class MotionPreviewView: NSView {
             let laneBottom = bounds.height - laneHeight * CGFloat(index + 1)
             let mouse = CGPoint(x: Self.margin + position.x * (bounds.width - 2 * Self.margin),
                                 y: laneBottom + Self.margin + position.y * (laneHeight - 2 * Self.margin))
-            figure.step(to: mouse, dt: CGFloat(dt))
+            figure.step(to: mouse, dt: CGFloat(dt), pressed: PreviewScript.isPressed(at: time))
             let path = figure.path(offsetBy: CGVector(dx: 0, dy: 0))
             shapes.border.path = path
             shapes.border.shadowPath = path

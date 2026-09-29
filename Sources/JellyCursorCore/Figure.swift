@@ -3,10 +3,16 @@ import Foundation
 import CoreGraphics
 #endif
 
-// 画面に描くカーソル。毎フレーム動かし、落ち着いたかを返す
+// 画面に描くカーソル。毎フレーム動かし、落ち着いたかを返す。pressed はマウスのボタンを押しているか
 package protocol Figure: AnyObject {
     var isSettled: Bool { get }
-    func step(to mouse: CGPoint, dt: CGFloat)
+    func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool)
+}
+
+extension Figure {
+    package func step(to mouse: CGPoint, dt: CGFloat) {
+        step(to: mouse, dt: dt, pressed: false)
+    }
 }
 
 // 輪郭を変形させて描くもの。矢印（Jelly）と I 字（IBeam）

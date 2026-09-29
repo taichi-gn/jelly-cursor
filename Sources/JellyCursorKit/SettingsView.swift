@@ -152,10 +152,14 @@ private struct MotionPane: View {
                 StrengthSlider(title: "弾み", value: $settings.values.motion.wobble,
                                low: "なし", high: "大きく",
                                note: "止めたときや向きを変えたときの揺れ")
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("クリックで弾む", isOn: $settings.values.clickBounce)
+                    Note("押すとクリック位置へ向けて少しつぶれ、離すと弾んで戻ります。つぶれる深さは「伸び」、戻り方は「弾み」に合わせます")
+                }
             }
 
             Section("プレビュー") {
-                MotionPreview(style: settings.values.motion)
+                MotionPreview(motion: settings.values.motionParameters)
                     .frame(height: 170)
                 Note("標準は、これまでの JellyCursor と同じ動きです")
             }

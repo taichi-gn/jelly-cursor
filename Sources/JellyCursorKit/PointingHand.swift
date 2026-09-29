@@ -28,14 +28,14 @@ final class PointingHand: ImageFigure {
         anchor = CGPoint(x: cursor.hotSpot.x / cursor.size.width, y: 1 - cursor.hotSpot.y / cursor.size.height)
     }
 
-    func step(to mouse: CGPoint, dt: CGFloat) {
-        motion.step(to: mouse, dt: dt, imageHeight: size.height)
+    func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool) {
+        motion.step(to: mouse, dt: dt, imageHeight: size.height, pressed: pressed)
         position = mouse
     }
 
-    // 画像の上方向（指の向き）に伸ばしてから、動かした方向へ回す
+    // 画像の上方向（指の向き）に伸ばし、クリックしたら指先へ向けてつぶしてから、動かした方向へ回す
     var transform: CATransform3D {
-        let s = 1 + motion.stretch
+        let s = motion.lengthScale
         let stretched = CATransform3DMakeScale(1 / sqrt(s), s, 1)
         return CATransform3DConcat(stretched, CATransform3DMakeRotation(motion.angle - .pi / 2, 0, 0, 1))
     }

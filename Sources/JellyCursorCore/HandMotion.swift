@@ -9,6 +9,10 @@ package struct HandMotion {
     package private(set) var angle: CGFloat = .pi / 2
     package private(set) var isSettled = true
     package var stretch: CGFloat { stretchSpring.value }
+    // クリックでつぶれる割合（正でつぶれ、負で伸びる）。指先へ向けてつぶす
+    package var squash: CGFloat { squish.value }
+    // 指の向きの長さの倍率（伸びとつぶれを合わせたもの）。戻りの行き過ぎで 0 以下になって裏返らないよう、下限を設ける
+    package var lengthScale: CGFloat { max((1 + stretch) * (1 - squash), Tuning.IBeam.minScale) }
 
     // 指は上を向いている
     private var heading: Heading
@@ -20,16 +24,19 @@ package struct HandMotion {
     private let maxStretch: CGFloat
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
+    private var squish: ClickSquish
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
         heading = Heading(restAngle: .pi / 2, motion: motion)
         pathSpan = ArrowShape(scale: scale).length
         stretchSpring = SpringValue(omega: Tuning.Hand.omega, dampingRatio: motion.handDampingRatio)
         maxStretch = Tuning.Hand.maxStretch * motion.stretch
+        squish = ClickSquish(motion: motion)
     }
 
     // imageHeight は描く画像の高さ。伸びのずれをピクセルに直して、落ち着いたかを決めるのに使う
-    package mutating func step(to mouse: CGPoint, dt: CGFloat, imageHeight: CGFloat) {
+    package mutating func step(to mouse: CGPoint, dt: CGFloat, imageHeight: CGFloat, pressed: Bool = false) {
+        squish.step(pressed: pressed, mouse: mouse, dt: dt)
         if let lastMouse, dt > 0 {
             heading.turn(from: lastMouse, to: mouse, dt: dt)
             let k = 1 - exp(-Tuning.Hand.velocitySmoothing * dt)
@@ -46,7 +53,8 @@ package struct HandMotion {
         let maxTurn = Tuning.Hand.maxTurnRate * dt
         angle = wrapAngle(angle + min(max(smoothed, -maxTurn), maxTurn))
         let lag = abs(wrapAngle(heading.angle - angle)) * Tuning.Turn.armLength
-        isSettled = max(heading.restError, stretchSpring.restError * imageHeight, trail.length, lag) < Tuning.Settle.threshold
+        isSettled = max(heading.restError, stretchSpring.restError * imageHeight, trail.length, lag,
+                        squish.restError(size: imageHeight)) < Tuning.Settle.threshold
     }
 
     // 矢印の胴体と同じく、動いている間は実際に通った道の向きを指す。

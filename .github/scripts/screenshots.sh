@@ -3,7 +3,7 @@
 # - はじめての起動の案内、設定画面の各タブ、メニューバーのメニュー、Dock のアイコン
 # - 円を描いて動かしている間と、止めた直後のカーソル
 # - 本物のカーソルの出し入れ、ショートカット、⌘W で閉じたあとの前面、止まっている間と動かしている間の CPU、
-#   動きのプレビュー、Dock のアイコン、残る記録
+#   動きのプレビュー、Dock のアイコン、残る記録、クリックで弾むこと、設定のタブのフォーカスの枠
 # キー入力やクリックを送る許可が無い Mac では、それを使う確認だけ飛ばす
 set -euo pipefail
 OUT="$PWD/screenshots"
@@ -30,8 +30,11 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
-    [ -f "$OUT/settings-about.png" ] && { sips -s format jpeg -s formatOptions 70 "$OUT/settings-about.png" --out "$TOOLS/settings-about.jpg" >/dev/null || true; }
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$OUT"/dock-tile.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/settings-about.jpg "$OUT"/icon.png "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/welcome.png; do
+    for name in settings-about focus-motion focus-general focus-cursors; do
+        [ -f "$OUT/$name.png" ] || continue
+        sips -s format jpeg -s formatOptions 70 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
+    done
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/focus-motion.jpg "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
@@ -153,6 +156,33 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
+# タブを切り替えたあとの画面を撮る（キーボード操作用の青い枠（フォーカスの枠）が出ていないかを、画像で見る）。
+# 枠はシステム設定の「キーボードナビゲーション」がオンのときに出るので、その設定にして撮り、あとで元に戻す。
+# 枠は薄い色で、画像の数値だけでは確かめにくいので、ここは撮るだけにしている
+keyboard_ui=$(defaults read NSGlobalDomain AppleKeyboardUIMode 2>/dev/null || true)
+defaults write NSGlobalDomain AppleKeyboardUIMode -int 2
+launch -OpenSettings general
+bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "設定画面が開かなかった"
+IFS=, read -r wx wy ww wh <<<"$bounds"
+if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
+    sleep 0.5
+    for tab in "motion 193" "general 143" "cursors 254"; do
+        read -r name x <<<"$tab"
+        "$TOOLS/click" $((wx + x)) $((wy + 43))
+        sleep 1.2
+        screencapture -x -R"$wx,$wy,$ww,$wh" "$OUT/focus-$name.png"
+        note "タブ $name を選んだあと: $("$TOOLS/image-stats" "$OUT/focus-$name.png")"
+    done
+else
+    note "クリックを送る許可が無いので、フォーカスの枠の確認は飛ばした"
+fi
+quit
+if [ -n "$keyboard_ui" ]; then
+    defaults write NSGlobalDomain AppleKeyboardUIMode -int "$keyboard_ui"
+else
+    defaults delete NSGlobalDomain AppleKeyboardUIMode
+fi
+
 # メニューバーのメニューを開いて撮る。macOS 26 ではメニューバーのアイコンが窓の一覧に出ず、
 # クリックする場所が分からないので、起動時の指定でアプリに開かせる。
 # README に使うので、「視差効果を減らす」で止めずに、動いているときのメニューにする。
@@ -180,7 +210,8 @@ before=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
 note "開く前: $before"
 launch -OpenSettings motion
 pid=$(pgrep -x JellyCursor)
-IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
+bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "設定画面が開かなかった"
+IFS=, read -r wx wy ww wh <<<"$bounds"
 if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
     sleep 1
     note "クリックしたあと: $("$TOOLS/diagnose" JellyCursor | grep frontmost)"
@@ -233,6 +264,33 @@ start=$(cpu_seconds "$pid")
 moving=$(awk -v a="$start" -v b="$(cpu_seconds "$pid")" 'BEGIN { printf "%.1f", (b - a) / 5 * 100 }')
 note "動かしている間の CPU: ${moving}%"
 "$TOOLS/diagnose" JellyCursor
+# クリックで弾むこと。押している間は矢印がクリック位置へ向けてつぶれて短くなり、離して落ち着くと元の大きさに戻る。
+# Finder の窓より下の黒い机の上で押し、矢印の白い縁を囲む四角の高さを比べる
+# （矢印は右下へのびているので、つぶれると高さが縮む。横には少し太るので、対角線より高さのほうが差が大きい）
+cx=600; cy=600
+region="$((cx - 8)),$((cy - 8)),48,48"
+if "$TOOLS/click" "$cx" "$cy"; then
+    sleep 1.5
+    screencapture -x -R"$region" "$OUT/click-rest.png"
+    "$TOOLS/click" "$cx" "$cy" 1.2 &
+    clicker=$!
+    sleep 0.6
+    screencapture -x -R"$region" "$OUT/click-pressed.png"
+    wait "$clicker"
+    sleep 1.5
+    screencapture -x -R"$region" "$OUT/click-released.png"
+    box() {
+        "$TOOLS/image-stats" "$1" | sed -E 's/.*light-box=([0-9]+x[0-9]+).*/\1/'
+    }
+    rest=$(box "$OUT/click-rest.png")
+    pressed=$(box "$OUT/click-pressed.png")
+    released=$(box "$OUT/click-released.png")
+    note "クリック: 押す前 ${rest} / 押している間 ${pressed} / 離したあと ${released}（矢印を囲む四角の幅x高さ px）"
+    awk -v p="${pressed#*x}" -v r="${rest#*x}" 'BEGIN { exit !(r > 5 && p < r * 0.93) }' || fail "押しても矢印がつぶれていない"
+    [ "$released" = "$rest" ] || fail "離したあと元の大きさに戻っていない"
+else
+    note "クリックを送る許可が無いので、クリックの確認は飛ばした"
+fi
 quit
 # 止まっている間に何かが回り続けていないこと（仮想マシンの揺れを見込んで、ゆるく確かめる）
 awk -v v="$idle" 'BEGIN { exit !(v < 10) }' || fail "止まっている間の CPU が多すぎる: ${idle}%"
