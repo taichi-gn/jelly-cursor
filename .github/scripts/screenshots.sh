@@ -156,6 +156,26 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
+# タブを切り替えたあとに、キーボード操作用の青い枠（フォーカスの枠）が出ないこと。
+# システム設定の「キーボードナビゲーション」がオンのときに出るので、その設定にして確かめる
+defaults write NSGlobalDomain AppleKeyboardUIMode -int 2
+launch -OpenSettings general
+IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
+if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
+    sleep 0.5
+    for tab in "motion 193" "general 143" "cursors 254"; do
+        read -r name x <<<"$tab"
+        "$TOOLS/click" $((wx + x)) $((wy + 43))
+        sleep 1.2
+        screencapture -x -R"$wx,$wy,$ww,$wh" "$OUT/focus-$name.png"
+        note "タブ $name を選んだあと: $("$TOOLS/image-stats" "$OUT/focus-$name.png")"
+    done
+else
+    note "クリックを送る許可が無いので、フォーカスの枠の確認は飛ばした"
+fi
+quit
+defaults delete NSGlobalDomain AppleKeyboardUIMode
+
 # メニューバーのメニューを開いて撮る。macOS 26 ではメニューバーのアイコンが窓の一覧に出ず、
 # クリックする場所が分からないので、起動時の指定でアプリに開かせる。
 # README に使うので、「視差効果を減らす」で止めずに、動いているときのメニューにする。
@@ -208,26 +228,6 @@ else
     note "イベントを送る許可が無いので、⌘W の確認は飛ばした"
 fi
 quit
-
-# タブを切り替えたあとに、キーボード操作用の青い枠（フォーカスの枠）が出ないこと。
-# システム設定の「キーボードナビゲーション」がオンのときに出るので、その設定にして確かめる
-defaults write NSGlobalDomain AppleKeyboardUIMode -int 2
-launch -OpenSettings general
-IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
-if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
-    sleep 0.5
-    for tab in "motion 193" "general 143" "cursors 254"; do
-        read -r name x <<<"$tab"
-        "$TOOLS/click" $((wx + x)) $((wy + 43))
-        sleep 1.2
-        screencapture -x -R"$wx,$wy,$ww,$wh" "$OUT/focus-$name.png"
-        note "タブ $name を選んだあと: $("$TOOLS/image-stats" "$OUT/focus-$name.png")"
-    done
-else
-    note "クリックを送る許可が無いので、フォーカスの枠の確認は飛ばした"
-fi
-quit
-defaults delete NSGlobalDomain AppleKeyboardUIMode
 
 # 円を描いて速く動かしている間と、止めた直後（戻る揺れ）の矢印。
 # CI の Mac は「視差効果を減らす」がオンで、初期設定では止まるので、その設定だけ外して撮る
