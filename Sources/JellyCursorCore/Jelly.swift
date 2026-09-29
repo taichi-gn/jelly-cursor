@@ -20,12 +20,20 @@ package final class Jelly: CursorFigure {
     // 前のフレームで描いた胴体の向き（先端から胴体の中ほどへ）。回し始めの向きと、クリックでつぶす向きにする
     private var bodyBack = CGVector(dx: 0, dy: -1)
     private var squish: ClickSquish
+    // 折り返しで胴体を回した向きの合計（ラジアン。+ で左回り）。左右に振り続けたときに、同じ向きへ回り続けず
+    // 巻き戻すよう、回す側を選ぶのに使う。しばらく折り返さなければ忘れる
+    private var pivotTurns: CGFloat = 0
+    private var sincePivot: CGFloat = 0
+    // 回す側を決めかねたとき（止まったときの向きに沿って振ったとき）に回す側。毎回同じ側へ振れるように覚えておく
+    private var tieSide: CGFloat = 1
 
     private struct Pivot {
         var angle: CGFloat
         var velocity: CGFloat = 0
         // 回る側（+1 で左回り）。先端が折り返しから離れて回す先が決まったときに決める
         var side: CGFloat?
+        // 回る側を決めたときの回す先の向き。回している間にまた折り返して回す先が大きく変わったら、回る側を決め直す
+        var sideTarget: CGFloat = 0
         // 前のフレームの回す先の向き。折り返しが抜けたあと、回す先が回り続けても（円を描き続けても）遅れずに追うため
         var lastTarget: CGFloat?
     }
@@ -103,8 +111,12 @@ package final class Jelly: CursorFigure {
                     targetRate = min(max(wrapAngle(target - last) / dt, -maxSpeed), maxSpeed)
                 }
                 p.lastTarget = folded ? nil : target
-                let side = p.side ?? turnSide(from: p.angle, to: target)
-                p.side = side
+                if p.side != nil, abs(wrapAngle(target - p.sideTarget)) > .pi / 2 { p.side = nil }
+                if p.side == nil {
+                    p.side = turnSide(from: p.angle, to: target)
+                    p.sideTarget = target
+                }
+                let side = p.side ?? 1
                 error = wrapAngle(target - p.angle)
                 if abs(error) > Tuning.Fold.oppositeTurn, error * side < 0 {
                     error += error > 0 ? -2 * .pi : 2 * .pi
@@ -114,14 +126,18 @@ package final class Jelly: CursorFigure {
             }
             let spring = DampedSpring(omega: Tuning.Fold.omega, dampingRatio: 1)
             let h = dt / CGFloat(Tuning.Settle.substeps)
+            let before = p.angle
             for _ in 0..<Tuning.Settle.substeps {
                 p.velocity += spring.velocityChange(error: error, velocity: p.velocity - targetRate, h: h)
                 p.velocity = min(max(p.velocity, -maxSpeed), maxSpeed)
                 p.angle += p.velocity * h
                 error -= p.velocity * h
             }
+            pivotTurns += p.angle - before
             p.angle = wrapAngle(p.angle)
-            if !folded && abs(error) < Tuning.Fold.finishAngle {
+            // 回す先が回り続けていると、1フレームのうちに回す先が進むぶん、フレームの終わりには半分ほど遅れて見える。
+            // その遅れを除いて、追いついたかを見る（画面の書き換えが遅いほど遅れが大きく、回し終われなくなるので）
+            if !folded && abs(error + targetRate * dt / 2) < Tuning.Fold.finishAngle {
                 // 回し終えた向きから、ふだんの向きの動き（進行方向へ向ける・止めたら左上へ戻す）を続ける
                 heading.align(angle: p.angle + .pi, velocity: p.velocity)
                 pivot = nil
@@ -129,6 +145,8 @@ package final class Jelly: CursorFigure {
                 pivot = p
             }
         }
+        sincePivot = pivot == nil ? sincePivot + dt : 0
+        if sincePivot > Tuning.Fold.turnMemory { pivotTurns = 0 }
         if dt > 0 {
             let target: CGFloat = pivot == nil ? 1 : 0
             let tau = target < pathFollow ? Tuning.Fold.followDrop : Tuning.Fold.followRecover
@@ -137,18 +155,26 @@ package final class Jelly: CursorFigure {
         }
     }
 
-    // 回る側（+1 で左回り、-1 で右回り）。ふつうは近い側へ回る。ほぼ逆向きへ回すときは、止まったときの胴体の向き（右下）を
-    // 通る側へ回す。左右に振ったときに、同じ側へ回り続けて（プロペラのように）回らず、ぶら下がるように左右へ振れる。
+    // 回る側（+1 で左回り、-1 で右回り）。ふつうは近い側へ回る。ほぼ逆向きへ回すときは:
+    // - それまでの折り返しで回していたら、巻き戻す側へ回す。左右に振り続けても、同じ側へ回り続けず（プロペラのように回らず）、
+    //   振り子のように行き来する
+    // - 回していなければ、止まったときの胴体の向き（右下）を通る側へ回す。ぶら下がるように振れる。
+    //   その向きに沿って振ったとき（どちら側でも同じくらいのとき）は、前と同じ側へ回す
     // 道の見かけの曲がり（画面の書き換えの速さで変わる）には頼らない
     private func turnSide(from angle: CGFloat, to target: CGFloat) -> CGFloat {
         let error = wrapAngle(target - angle)
         guard abs(error) > Tuning.Fold.oppositeTurn else { return error >= 0 ? 1 : -1 }
+        if abs(pivotTurns) > Tuning.Fold.unwindTurn { return pivotTurns > 0 ? -1 : 1 }
+        let rest = shape.baseAngle + .pi
+        if abs(wrapAngle(rest - angle)) < Tuning.Fold.restTie || abs(wrapAngle(rest - target)) < Tuning.Fold.restTie {
+            return tieSide
+        }
         func counterclockwise(_ a: CGFloat) -> CGFloat {
             let r = a.truncatingRemainder(dividingBy: 2 * .pi)
             return r < 0 ? r + 2 * .pi : r
         }
-        let rest = shape.baseAngle + .pi
-        return counterclockwise(rest - angle) < counterclockwise(target - angle) ? 1 : -1
+        tieSide = counterclockwise(rest - angle) < counterclockwise(target - angle) ? 1 : -1
+        return tieSide
     }
 
     // 矢印の軸を道筋に沿って曲げ、各頂点をその地点の向きに対して横へずらす

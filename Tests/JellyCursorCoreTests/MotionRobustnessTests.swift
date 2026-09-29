@@ -160,7 +160,8 @@ import Testing
     @Test(arguments: [60, 120, 240] as [CGFloat])
     func keepsStretchingWhileCircling(rate: CGFloat) {
         let rest = ArrowShape(scale: 1).length
-        for (rx, ry, revolutions) in [(40, 40, 3), (80, 80, 2), (80, 30, 3)] as [(CGFloat, CGFloat, CGFloat)] {
+        // 速く回すほど、画面の書き換えが遅い（60Hz）ときに回し終わりにくい
+        for (rx, ry, revolutions) in [(40, 40, 3), (80, 80, 2), (80, 30, 3), (80, 80, 2.5), (40, 40, 4)] as [(CGFloat, CGFloat, CGFloat)] {
             // 最後の1秒の、先端からいちばん遠い頂点までの距離の平均
             func reach(reverseAt: CGFloat) -> CGFloat {
                 let arrow = Jelly(scale: 1)
@@ -199,6 +200,34 @@ import Testing
             }
             #expect(total > 20, "上下のゆれ \(wobble): 振っても向きが変わらない")
             #expect(abs(net) < .pi, "上下のゆれ \(wobble): \(net) ラジアン回り続けた")
+        }
+    }
+
+    // どの向きに、どの速さで振っても、同じ向きへ回り続けない（止まったときの矢印の向きに沿って振ったときや、
+    // 速く振って折り返しの途中でまた折り返したときも）。手ぶれほどの小さなゆれを混ぜる
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func shakingAnyWayDoesNotSpin(rate: CGFloat) {
+        let arrowAxis = ArrowShape(scale: 1).baseAngle
+        for axis in [0, .pi / 2, arrowAxis, .pi / 4, -.pi / 4] as [CGFloat] {
+            for (amplitude, frequency) in [(30, 3), (50, 4), (100, 5), (40, 6), (20, 8)] as [(CGFloat, CGFloat)] {
+                let arrow = Jelly(scale: 1)
+                var random = SeededRandom(seed: 3)
+                var net: CGFloat = 0, worst: CGFloat = 0, last: CGFloat?
+                var t: CGFloat = 0
+                arrow.step(to: CGPoint(x: 500, y: 500), dt: 0)
+                while t < 3 {
+                    t += 1 / rate
+                    let u = amplitude * min(t / 0.2, 1) * sin(2 * .pi * frequency * t)
+                    let jitter = (random.next() - 0.5) * 0.6
+                    let mouse = CGPoint(x: 500 + u * cos(axis) - jitter * sin(axis), y: 500 + u * sin(axis) + jitter * cos(axis))
+                    arrow.step(to: mouse, dt: 1 / rate)
+                    let angle = bodyAngle(arrow, from: mouse)
+                    if let last { net += wrapAngle(angle - last) }
+                    last = angle
+                    worst = max(worst, abs(net))
+                }
+                #expect(worst < 1.5 * .pi, "向き \(Int(axis * 180 / .pi))° \(amplitude)px \(frequency)回/秒: \(worst / (2 * .pi)) 回転")
+            }
         }
     }
 

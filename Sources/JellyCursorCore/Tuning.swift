@@ -60,6 +60,12 @@ package enum Tuning {
         static let maxTailSpeed: CGFloat = 1500
         // 回す先がこの角度より大きく離れていたら、ほぼ逆向きとみなし、決めた側へ回す（右回りと左回りが入れ替わらないように）
         static let oppositeTurn: CGFloat = 2.6
+        // 折り返しで回した向きの合計がこれ（ラジアン）を超えていたら、ほぼ逆向きへ回すときは巻き戻す側へ回す
+        static let unwindTurn: CGFloat = 0.5
+        // 回す先か今の向きが、止まったときの向きからこの角度（ラジアン）以内なら、どちら側へ回しても同じくらいなので、前と同じ側へ回す
+        static let restTie: CGFloat = 0.35
+        // この秒数折り返さなければ、回した向きの合計を忘れる
+        static let turnMemory: CGFloat = 1
         // 先端が折り返しからこの道のり(pt)離れるまでは回さない。行き過ぎて少し戻したときに、向きを変えないように
         static let minTurnTravel: CGFloat = 10
         // 折り返しが胴体より後ろへ抜け、回す先との差がこれ（ラジアン）より小さくなったら、道に沿わせるのに戻る
