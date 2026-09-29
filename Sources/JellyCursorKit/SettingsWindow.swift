@@ -55,6 +55,22 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         recorder.stop()
     }
 
+    // タブの切り替えは SwiftUI が作り直すことがあるので、前面になるたびに枠を消し直す
+    func windowDidBecomeKey(_ notification: Notification) {
+        if let view = window?.contentView { Self.hideTabFocusRing(in: view) }
+    }
+
+    // タブを選んだあとに少し遅れて出る、キーボード操作用の青い枠（フォーカスの枠）を出さない。
+    // システム設定の「キーボードナビゲーション」がオンのときに出る。タブの中の項目の枠はそのまま残す
+    private static func hideTabFocusRing(in view: NSView) {
+        for subview in view.subviews {
+            if subview is NSSegmentedControl || subview is NSTabView {
+                subview.focusRingType = .none
+            }
+            hideTabFocusRing(in: subview)
+        }
+    }
+
     private func makeWindow() -> NSWindow {
         let view = SettingsView(settings: settings, state: state, actions: actions, navigation: navigation,
                                 recorder: recorder)
@@ -67,6 +83,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         // 中身の大きさが決まってから真ん中に置く。先に置くと、あとで広がったぶん画面の右や上にはみ出す
         window.setContentSize(controller.view.fittingSize)
         window.center()
+        if let view = window.contentView { Self.hideTabFocusRing(in: view) }
         return window
     }
 }
