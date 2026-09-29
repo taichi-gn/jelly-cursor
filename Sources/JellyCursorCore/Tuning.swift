@@ -15,6 +15,8 @@ package enum Tuning {
     // 胴体はマウスが通った道の上に並ぶ。矢印の長さ ＝ 普段の長さ ＋ 直近 duration 秒に動いた距離
     enum Trail {
         static let duration: CGFloat = 0.07
+        // 胴体がその秒数に動いた道のりより長いとき、後ろのほうを沿わせる道を、何秒前まで覚えておくか
+        static let keepTime: CGFloat = 0.5
         static let maxStretch: CGFloat = 60
         static let lengthSmoothing: CGFloat = 0.03
         // 伸びたぶん細くする度合い。0.5 なら長さ2倍で幅が約0.7倍、0 なら幅は変わらない
@@ -74,6 +76,8 @@ package enum Tuning {
         static let oppositeTurn: CGFloat = 2.6
         // 折り返しで回した向きの合計がこれ（ラジアン）を超えていたら、ほぼ逆向きへ回すときは巻き戻す側へ回す
         static let unwindTurn: CGFloat = 0.5
+        // まっすぐにして回し始めるとき、胴体の尾が中ほどからこの角度（ラジアン）より横にあれば、曲がっている側へ回す
+        static let curlAngle: CGFloat = 0.2
         // 回す先か今の向きが、止まったときの向きからこの角度（ラジアン）以内なら、どちら側へ回しても同じくらいなので、前と同じ側へ回す
         static let restTie: CGFloat = 0.35
         // この秒数折り返さなければ、回した向きの合計を忘れる

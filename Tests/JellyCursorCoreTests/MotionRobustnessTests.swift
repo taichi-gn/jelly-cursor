@@ -247,6 +247,40 @@ import Testing
         }
     }
 
+    // 角を曲がっても、少しあとで胴体の後ろのほうが跳ねない（道の覚えている秒数から角が抜けたときに、
+    // 後ろのほうの向きが一度に変わらない）。1フレームの動きは、マウスが1フレームに動く距離に比べて小さい
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func cornersDoNotSnapTheTail(rate: CGFloat) {
+        for scale in [1, 2] as [CGFloat] {
+            for style in [MotionStyle.standard, MotionStyle(stretch: 2, wobble: 2)] {
+                for degrees in [45, 90, -90] as [CGFloat] {
+                    for speed in [400, 700, 1000, 2000] as [CGFloat] {
+                        let arrow = Jelly(scale: scale, motion: MotionParameters(style))
+                        var mouse = CGPoint(x: 300, y: 300)
+                        arrow.step(to: mouse, dt: 0)
+                        var previous = arrow.points, worst: CGFloat = 0
+                        let corner = Int(0.3 * rate)
+                        let turned = CGVector(dx: cos(degrees * .pi / 180), dy: sin(degrees * .pi / 180))
+                        for i in 1...(2 * corner) {
+                            let last = mouse
+                            let direction = i <= corner ? CGVector(dx: 1, dy: 0) : turned
+                            mouse.x += direction.dx * speed / rate
+                            mouse.y += direction.dy * speed / rate
+                            arrow.step(to: mouse, dt: 1 / rate)
+                            if i > corner + 1 {
+                                worst = max(worst, frameJump(from: previous, to: arrow.points,
+                                                             mouseMoved: CGVector(dx: mouse.x - last.x, dy: mouse.y - last.y)))
+                            }
+                            previous = arrow.points
+                        }
+                        let label = "大きさ \(scale) 伸び \(style.stretch) \(degrees)° \(speed)pt/秒"
+                        #expect(worst < 6 * speed / rate + 3 * scale, "\(label): \(worst)")
+                    }
+                }
+            }
+        }
+    }
+
     // どの向きに、どの速さで振っても、同じ向きへ回り続けない（止まったときの矢印の向きに沿って振ったときや、
     // 速く振って折り返しの途中でまた折り返したときも）。手ぶれほどの小さなゆれを混ぜる
     @Test(arguments: [60, 120, 240] as [CGFloat])

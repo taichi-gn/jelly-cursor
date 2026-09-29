@@ -6,7 +6,7 @@ import CoreGraphics
 package final class Jelly: CursorFigure {
     private let shape: ArrowShape
     package private(set) var points: [CGPoint]
-    private var trail = Trail()
+    private var trail: Trail
     private var heading: Heading
     private var length: CGFloat
     private var lastMouse = CGPoint.zero
@@ -19,6 +19,8 @@ package final class Jelly: CursorFigure {
     private var pathFollow: CGFloat = 1
     // 前のフレームで描いた胴体の向き（先端から胴体の中ほどへ）。回し始めの向きと、クリックでつぶす向きにする
     private var bodyBack = CGVector(dx: 0, dy: -1)
+    // 前のフレームで描いた胴体の、中ほどから見た尾の側（+ で左）。曲がった胴体をまっすぐにして回すとき、曲がっている側へ回す
+    private var bodyCurl: CGFloat = 0
     private var squish: ClickSquish
     // 道に沿わせてよい度合い。道の向きがまっすぐな胴体の向きと逆のうちは下げ、向きが回ってそろうにつれて上げる
     private var pathGate: CGFloat = 1
@@ -38,12 +40,16 @@ package final class Jelly: CursorFigure {
         var side: CGFloat?
         // 回る側を決めたときの回す先の向き。回している間にまた折り返して回す先が大きく変わったら、回る側を決め直す
         var sideTarget: CGFloat = 0
+        // 回し始めたときに胴体が曲がっていた側（+1 で左、0 でまっすぐ）
+        var curl: CGFloat = 0
         // 前のフレームの回す先の向き。折り返しが抜けたあと、回す先が回り続けても（円を描き続けても）遅れずに追うため
         var lastTarget: CGFloat?
     }
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
         shape = ArrowShape(scale: scale)
+        // 胴体がいちばん伸びたときの長さまで、通った道を覚えておく
+        trail = Trail(keep: shape.length + Tuning.Trail.maxStretch * motion.stretch + 2 * Tuning.Trail.tangentWindow)
         heading = Heading(restAngle: shape.baseAngle, motion: motion)
         stretchScale = motion.stretch
         squish = ClickSquish(motion: motion)
@@ -99,7 +105,8 @@ package final class Jelly: CursorFigure {
             folded = fold.distance < (pivot == nil ? min(span, head) : span)
         }
         if folded, pivot == nil {
-            pivot = Pivot(angle: atan2(bodyBack.dy, bodyBack.dx))
+            pivot = Pivot(angle: atan2(bodyBack.dy, bodyBack.dx),
+                          curl: abs(bodyCurl) > Tuning.Fold.curlAngle ? (bodyCurl > 0 ? 1 : -1) : 0)
         }
         if var p = pivot {
             // 回す先は、先端から折り返し（無くなったら胴体の長さ）までの道の向き。新しく進む向きの後ろ。
@@ -119,7 +126,8 @@ package final class Jelly: CursorFigure {
                 p.lastTarget = folded ? nil : target
                 if p.side != nil, abs(wrapAngle(target - p.sideTarget)) > .pi / 2 { p.side = nil }
                 if p.side == nil {
-                    p.side = turnSide(from: p.angle, to: target)
+                    p.side = turnSide(from: p.angle, to: target, curl: p.curl)
+                    p.curl = 0
                     p.sideTarget = target
                 }
                 let side = p.side ?? 1
@@ -164,13 +172,16 @@ package final class Jelly: CursorFigure {
     // 回る側（+1 で左回り、-1 で右回り）。ふつうは近い側へ回る。ほぼ逆向きへ回すときは:
     // - それまでの折り返しで回していたら、巻き戻す側へ回す。左右に振り続けても、同じ側へ回り続けず（プロペラのように回らず）、
     //   振り子のように行き来する
-    // - 回していなければ、止まったときの胴体の向き（右下）を通る側へ回す。ぶら下がるように振れる。
+    // - 回し始めたときに胴体が大きく曲がっていたら（円を描いていて逆に回したときなど）、曲がっている側へ回す。
+    //   まっすぐにするときに、胴体の後ろのほうが大きく跳ばないように
+    // - それ以外は、止まったときの胴体の向き（右下）を通る側へ回す。ぶら下がるように振れる。
     //   その向きに沿って振ったとき（どちら側でも同じくらいのとき）は、前と同じ側へ回す
-    // 道の見かけの曲がり（画面の書き換えの速さで変わる）には頼らない
-    private func turnSide(from angle: CGFloat, to target: CGFloat) -> CGFloat {
+    // 道の少しの曲がり（画面の書き換えの速さで変わる）には頼らない
+    private func turnSide(from angle: CGFloat, to target: CGFloat, curl: CGFloat) -> CGFloat {
         let error = wrapAngle(target - angle)
         guard abs(error) > Tuning.Fold.oppositeTurn else { return error >= 0 ? 1 : -1 }
         if abs(pivotTurns) > Tuning.Fold.unwindTurn { return pivotTurns > 0 ? -1 : 1 }
+        if curl != 0 { return curl }
         let rest = shape.baseAngle + .pi
         if abs(wrapAngle(rest - angle)) < Tuning.Fold.restTie || abs(wrapAngle(rest - target)) < Tuning.Fold.restTie {
             return tieSide
@@ -223,6 +234,9 @@ package final class Jelly: CursorFigure {
     private func layOut(at mouse: CGPoint) {
         let spine = Spine(mouse: mouse, trail: trail, restBack: restBack, blend: pathEngagement * pathGate)
         bodyBack = (spine.point(at: shape.length / 2) - mouse).normalized ?? restBack
+        if let tail = (spine.point(at: length) - mouse).normalized {
+            bodyCurl = wrapAngle(atan2(tail.dy, tail.dx) - atan2(bodyBack.dy, bodyBack.dx))
+        }
         let stretch = length / shape.length
         let width = pow(1 / stretch, Tuning.Trail.thinning)
         let w = Tuning.Trail.tangentWindow
@@ -260,10 +274,10 @@ private struct Spine {
         let straight = CGPoint(x: mouse.x + restBack.dx * s, y: mouse.y + restBack.dy * s)
         guard blend > 0 else { return straight }
         let onPath: CGPoint
-        if s <= trail.length {
+        if s <= trail.pathLength {
             onPath = trail.point(at: s)
         } else {
-            let end = trail.point(at: trail.length), extra = s - trail.length
+            let end = trail.point(at: trail.pathLength), extra = s - trail.pathLength
             onPath = CGPoint(x: end.x + pathBack.dx * extra, y: end.y + pathBack.dy * extra)
         }
         return CGPoint(x: straight.x + (onPath.x - straight.x) * blend,
