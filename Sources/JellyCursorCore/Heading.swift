@@ -18,6 +18,10 @@ struct Heading {
     private var angularVel: CGFloat = 0
     private var smoothedVel = CGVector.zero
     private var idleTime: CGFloat = 0
+    // 手ぶれより大きく、向きを変えるほど速く動いていない状態が続いている秒数
+    private var slowTime: CGFloat = 0
+    // マウス位置をならした点。手ぶれならこの点のまわりにとどまり、動かしていればこの点から離れていく
+    private var calm: CGPoint?
     private var travel: CGFloat = 0
     private var returnPhase = ReturnPhase.none
     // 止まったときの向きから回った向きの合計（ラジアン。+ で左回り）。動いている間の分だけ数え、止まって戻り始めたら数え直す
@@ -66,15 +70,27 @@ struct Heading {
         let k = 1 - exp(-Tuning.Turn.velocitySmoothing * dt)
         smoothedVel.dx += ((mouse.x - last.x) / dt - smoothedVel.dx) * k
         smoothedVel.dy += ((mouse.y - last.y) / dt - smoothedVel.dy) * k
+        let center = calm ?? last
+        let kc = 1 - exp(-dt / Tuning.Turn.tremorSmoothing)
+        let settled = CGPoint(x: center.x + (mouse.x - center.x) * kc, y: center.y + (mouse.y - center.y) * kc)
+        calm = settled
+        // 手ぶれ（ならした点のまわりで小さく行き来するだけ）は、動いた距離に数えず、向きも変えない
+        let moving = hypot(mouse.x - settled.x, mouse.y - settled.y) > Tuning.Turn.tremorRadius
+        let fast = moving && hypot(smoothedVel.dx, smoothedVel.dy) > Tuning.Turn.minSpeed
         if mouse == last {
             idleTime += dt
             if idleTime >= Tuning.Turn.travelResetDelay { travel = 0 }
         } else {
             idleTime = 0
-            travel += hypot(mouse.x - last.x, mouse.y - last.y)
+            if moving { travel += hypot(mouse.x - last.x, mouse.y - last.y) }
         }
+        // ゆっくり動かしている間（手ぶれを含む）も、止めたときより少し長く続いたら、元の向きへ戻す。
+        // 速く動かしたあとにゆっくり動かすと、前の向きのまま（後ろ向きに進むなど）残らないように。
+        // 指したところで少し行き過ぎて戻すくらいの間は、向きを変えない
+        slowTime = fast ? 0 : slowTime + dt
+        if slowTime >= Tuning.Turn.slowReturnDelay { travel = 0 }
 
-        let returning = idleTime >= Tuning.Turn.returnDelay
+        let returning = idleTime >= Tuning.Turn.returnDelay || slowTime >= Tuning.Turn.slowReturnDelay
         if returning {
             targetAngle = restAngle
             // 元の向きへは近い側から戻るので、それまでに回った分は忘れる
@@ -82,7 +98,7 @@ struct Heading {
             forcedSide = nil
         } else {
             returnPhase = .none
-            if travel >= Tuning.Turn.minTravel && hypot(smoothedVel.dx, smoothedVel.dy) > Tuning.Turn.minSpeed {
+            if travel >= Tuning.Turn.minTravel && fast {
                 let target = atan2(smoothedVel.dy, smoothedVel.dx)
                 // 左右に振ったときなど、向ける先が急にほぼ逆へ変わったら、それまでに回った分を巻き戻す側へ回す。
                 // 近い側へ回すと、ばねの行き過ぎのぶん毎回同じ側が近くなり、同じ向きへ回り続ける

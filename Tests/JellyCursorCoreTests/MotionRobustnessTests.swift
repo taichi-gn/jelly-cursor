@@ -334,6 +334,68 @@ import Testing
         }
     }
 
+    // 止めた手がふるえる（数pxの範囲で細かく行き来する）だけなら、矢印は伸びも曲がりもせず、指も首を振らない
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func tremorLeavesTheCursorAlone(rate: CGFloat) {
+        let rest = ArrowShape(scale: 1).length
+        for amplitude in [0.5, 1.5, 3] as [CGFloat] {
+            let arrow = Jelly(scale: 1)
+            var hand = HandMotion(scale: 1)
+            var random = SeededRandom(seed: 11)
+            let center = CGPoint(x: 600, y: 390)
+            arrow.step(to: center, dt: 0)
+            hand.step(to: center, dt: 0, imageHeight: 32)
+            var shortest = CGFloat.infinity, longest: CGFloat = 0, handTurn: CGFloat = 0
+            var t: CGFloat = 0
+            while t < 3 {
+                t += 1 / rate
+                let dx = amplitude * (sin(2 * .pi * 10 * t + 1) * 0.7 + (random.next() - 0.5) * 0.6)
+                let dy = amplitude * (sin(2 * .pi * 8.3 * t + 4) * 0.7 + (random.next() - 0.5) * 0.6)
+                // 0.5pt ごとの位置（トラックパッドやマウスの細かさ）
+                let mouse = CGPoint(x: ((center.x + dx) * 2).rounded() / 2, y: ((center.y + dy) * 2).rounded() / 2)
+                arrow.step(to: mouse, dt: 1 / rate)
+                hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+                let reach = arrow.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0
+                shortest = min(shortest, reach)
+                longest = max(longest, reach)
+                handTurn = max(handTurn, abs(wrapAngle(hand.angle - .pi / 2)))
+            }
+            #expect(longest - shortest < 0.1 * rest, "±\(amplitude)pt: 矢印の長さ \(shortest)〜\(longest)")
+            #expect(handTurn < 0.1, "±\(amplitude)pt: 指が \(handTurn) ラジアン回った")
+        }
+    }
+
+    // 速く動かしたあと、ゆっくり動かし続けると、矢印も指も元の向きへ戻る（前の向きのまま後ろ向きに進まない）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func creepingReturnsToRest(rate: CGFloat) {
+        let restBody = { () -> CGFloat in
+            let arrow = Jelly(scale: 1)
+            arrow.step(to: .zero, dt: 0)
+            return bodyAngle(arrow, from: .zero)
+        }()
+        for (degrees, speed) in [(180, 30), (180, 60), (90, 60), (-90, 40)] as [(CGFloat, CGFloat)] {
+            let arrow = Jelly(scale: 1)
+            var hand = HandMotion(scale: 1)
+            let direction = CGVector(dx: cos(degrees * .pi / 180), dy: sin(degrees * .pi / 180))
+            var mouse = CGPoint(x: 300, y: 300)
+            arrow.step(to: mouse, dt: 0)
+            hand.step(to: mouse, dt: 0, imageHeight: 32)
+            var t: CGFloat = 0
+            while t < 2.4 {
+                t += 1 / rate
+                // 右へ速く 0.2 秒動かしてから、1pt ごとの位置でゆっくり動かす
+                mouse = t < 0.2 ? CGPoint(x: 300 + 1500 * t, y: 300)
+                    : CGPoint(x: (600 + direction.dx * speed * (t - 0.2)).rounded(), y: (300 + direction.dy * speed * (t - 0.2)).rounded())
+                arrow.step(to: mouse, dt: 1 / rate)
+                hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+            }
+            let arrowOff = abs(wrapAngle(bodyAngle(arrow, from: mouse) - restBody))
+            let handOff = abs(wrapAngle(hand.angle - .pi / 2))
+            #expect(arrowOff < 0.15, "\(degrees)° \(speed)pt/秒: 矢印が元の向きから \(arrowOff) ラジアン")
+            #expect(handOff < 0.15, "\(degrees)° \(speed)pt/秒: 指が上から \(handOff) ラジアン")
+        }
+    }
+
     // ふつうの手では起きない乱暴な入力（向きと速さが一瞬で変わる・画面の端まで飛ぶ・0 秒や 1/30 秒のフレーム）でも、
     // 形は有限で、マウスの近くにあり、指の伸びとつぶれも範囲に収まる。クリックも混ぜる
     @Test func erraticInputStaysFiniteAndNearTheMouse() {

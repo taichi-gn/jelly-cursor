@@ -47,12 +47,18 @@ package enum Tuning {
         static let minTravel: CGFloat = 30
         static let travelResetDelay: CGFloat = 0.15
         static let velocitySmoothing: CGFloat = 20
+        // 手ぶれとみなす大きさ(pt)と、手ぶれの中心を求めるならしの時間（秒）。ならした点からこれより離れていなければ、
+        // 動いた距離に数えず、向きも変えない（止めた手がふるえても、矢印が曲がったり指が首を振ったりしないように）
+        static let tremorRadius: CGFloat = 4
+        static let tremorSmoothing: CGFloat = 0.1
         // 角度のずれをピクセルに換算するときの尾の長さ
         static let armLength: CGFloat = 30
-        // 位置が変わらない状態がこの秒数続いたら、元の向き（左上）へ戻す。
+        // 位置が変わらない（またはゆっくりしか動かない）状態がこの秒数続いたら、元の向き（左上）へ戻す。
         // 振り子のように1回だけ行き過ぎ、折り返したら弾まずに収まる。
         // 行き過ぎの大きさは returnSwingDampingRatio で決まる（0.4 で約25%、1 で行き過ぎない）
         static let returnDelay: CGFloat = 0.2
+        // ゆっくりしか動かない（手ぶれを含む）状態がこの秒数続いたら、元の向きへ戻し、動いた距離も数え直す
+        static let slowReturnDelay: CGFloat = 0.4
         static let returnOmega: CGFloat = 18
         static let returnSwingDampingRatio: CGFloat = 0.4
         static let returnSettleDampingRatio: CGFloat = 1.0
