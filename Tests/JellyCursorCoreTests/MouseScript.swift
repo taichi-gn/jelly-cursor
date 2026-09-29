@@ -25,15 +25,16 @@ struct SeededRandom {
 }
 
 enum MouseScript {
-    // 左右に振る。振り始めの 0.2 秒で大きくし、上下にも少しゆれる
-    static func shake(amplitude: CGFloat, frequency: CGFloat, rate: CGFloat, seconds: CGFloat = 1.5) -> [ScriptFrame] {
+    // 左右に振る。振り始めの 0.2 秒で大きくし、上下にも drift だけゆれる
+    static func shake(amplitude: CGFloat, frequency: CGFloat, rate: CGFloat, seconds: CGFloat = 1.5,
+                      drift: CGFloat = 8) -> [ScriptFrame] {
         var frames = [ScriptFrame(mouse: CGPoint(x: 500, y: 500), dt: 0)]
         let dt = 1 / rate
         var t: CGFloat = 0
         while t < seconds {
             t += dt
             let x = amplitude * min(t / 0.2, 1) * sin(2 * .pi * frequency * t)
-            frames.append(ScriptFrame(mouse: CGPoint(x: 500 + x, y: 500 + 8 * sin(2 * .pi * 1.3 * t)), dt: dt))
+            frames.append(ScriptFrame(mouse: CGPoint(x: 500 + x, y: 500 + drift * sin(2 * .pi * 1.3 * t)), dt: dt))
         }
         return frames
     }

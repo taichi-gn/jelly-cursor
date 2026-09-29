@@ -16,7 +16,9 @@ final class CursorEngine {
     private let cover = CoverWatch()
     private lazy var clock = FrameClock(
         onFrame: { [unowned self] dt in self.frame(dt: dt) },
-        onIdle: { [unowned self] in self.followCursorState(mouse: NSEvent.mouseLocation) })
+        onIdle: { [unowned self] in self.followCursorState(mouse: NSEvent.mouseLocation) },
+        isPressed: { [unowned self] in self.isPressed() })
+    private var clickWatch = ClickWatch()
     private var cursorShape = CursorShapeWatch()
     private var typing = TypingWatch(now: ProcessInfo.processInfo.systemUptime)
     private var otherHide = OtherHideWatch(now: ProcessInfo.processInfo.systemUptime)
@@ -98,7 +100,7 @@ final class CursorEngine {
     // マウスのボタン（どれでも）を押している間は、クリックの形の変化を描く
     private func frame(dt: CGFloat) -> Bool {
         let mouse = NSEvent.mouseLocation
-        let pressed = NSEvent.pressedMouseButtons != 0
+        let pressed = isPressed()
         let figures = self.figures
         figures.forEach { $0.step(to: mouse, dt: dt, pressed: pressed) }
         followCursorState(mouse: mouse)
@@ -160,6 +162,16 @@ final class CursorEngine {
                 }
             }
         }
+    }
+
+    // マウスのボタン（どれでも）を押しているか。ボタンを見に行く間より短いタップも、少しの間押したことにする
+    private func isPressed() -> Bool {
+        let secondsSinceLastPress = [CGEventType.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            .map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }
+            .min() ?? .infinity
+        return clickWatch.isPressed(buttonsDown: NSEvent.pressedMouseButtons != 0,
+                                    secondsSinceLastPress: secondsSinceLastPress,
+                                    now: ProcessInfo.processInfo.systemUptime)
     }
 
     private static func secondsSinceKeyOrClick() -> TimeInterval {

@@ -10,9 +10,9 @@ struct ClickSquish {
     private var velocity: CGFloat = 0
     private var target: CGFloat = 0
     private var isPressed = false
-    // 押してから動いた道のり
+    // 押した位置と、そこからいちばん離れた距離。押したまま手が少しふるえても、つぶれを戻さないように道のりでは数えない
+    private var pressedAt = CGPoint.zero
     private var dragged: CGFloat = 0
-    private var lastMouse: CGPoint?
     private let depth: CGFloat
     private let pressSpring: DampedSpring
     private let releaseSpring: DampedSpring
@@ -32,13 +32,16 @@ struct ClickSquish {
     }
 
     mutating func step(pressed: Bool, mouse: CGPoint, dt: CGFloat) {
-        if pressed, !isPressed { dragged = 0 }
-        if pressed, let lastMouse { dragged += hypot(mouse.x - lastMouse.x, mouse.y - lastMouse.y) }
+        if pressed, !isPressed {
+            pressedAt = mouse
+            dragged = 0
+        }
+        if pressed { dragged = max(dragged, hypot(mouse.x - pressedAt.x, mouse.y - pressedAt.y)) }
         isPressed = pressed
-        lastMouse = mouse
         guard depth > 0 || !isResting else { return }
 
-        target = pressed ? depth * max(0, 1 - dragged / Tuning.Click.dragRelease) : 0
+        let drag = max(dragged - Tuning.Click.dragDeadZone, 0)
+        target = pressed ? depth * max(0, 1 - drag / Tuning.Click.dragRelease) : 0
         let spring = pressed ? pressSpring : releaseSpring
         let h = dt / CGFloat(Tuning.Settle.substeps)
         for _ in 0..<Tuning.Settle.substeps {

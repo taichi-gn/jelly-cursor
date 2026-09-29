@@ -62,13 +62,14 @@ import Testing
         }
     }
 
-    // 1フレームのうちに、マウスの動き以上に形が大きく飛ばない
+    // 1フレームのうちに、マウスの動き以上に形が大きく飛ばない。
+    // 上限は、この試験を書いたときの3つの設定の最大値（画面の書き換えの速さとポインタの大きさごと）の約1.2倍
     @Test(arguments: [60, 120, 240] as [CGFloat])
     func movesWithoutJumps(rate: CGFloat) {
+        let limits: [CGFloat: (CGFloat, CGFloat)] = [60: (112, 108), 120: (88, 89), 240: (58, 55)]
         for style in [MotionStyle.standard, MotionPreset.subtle.style, MotionPreset.lively.style] {
             for scale in [1, 2] as [CGFloat] {
-                // 胴体が長いほど、画面の書き換えが遅いほど、1フレームの動きは大きくなる
-                let limit = 1.25 * (20 * scale + 3600 / rate) * (0.5 + 0.5 * max(CGFloat(style.stretch), 1))
+                let limit = scale == 1 ? limits[rate]!.0 : limits[rate]!.1
                 var arrowJump: CGFloat = 0, beamJump: CGFloat = 0
                 let scripts = Self.shakes.map { MouseScript.shake(amplitude: $0.amplitude, frequency: $0.frequency, rate: rate) }
                     + (0..<8).map { MouseScript.wander(seed: $0, rate: rate) }
@@ -90,8 +91,88 @@ import Testing
                 }
                 let label = "伸び \(style.stretch) 大きさ \(scale)"
                 #expect(arrowJump < limit, "\(label): \(arrowJump) px")
-                #expect(beamJump < 8 * scale * max(CGFloat(style.stretch), 1) * 60 / rate, "\(label): \(beamJump) px")
+                #expect(beamJump < 3 * scale * max(CGFloat(style.stretch), 1) * 60 / rate, "\(label): \(beamJump) px")
             }
+        }
+    }
+
+    // 指したところで少し行き過ぎて戻す（5〜8px）くらいでは、矢印の向きを変えない。大きく戻せば向きを変える
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func smallCorrectionsDoNotFlip(rate: CGFloat) {
+        func turn(back: CGFloat, over seconds: CGFloat) -> CGFloat {
+            let arrow = Jelly(scale: 1)
+            let start = CGPoint(x: 100, y: 300)
+            arrow.step(to: start, dt: 0)
+            var mouse = start, t: CGFloat = 0
+            while t < 0.4 {
+                t += 1 / rate
+                let u = min(t / 0.4, 1)
+                mouse = CGPoint(x: start.x + 400 * (1 - (1 - u) * (1 - u)), y: start.y)
+                arrow.step(to: mouse, dt: 1 / rate)
+            }
+            let before = bodyAngle(arrow, from: mouse), end = mouse
+            var worst: CGFloat = 0, e: CGFloat = 0
+            while e < seconds + 0.1 {
+                e += 1 / rate
+                mouse = CGPoint(x: end.x - back * min(e / seconds, 1), y: end.y)
+                arrow.step(to: mouse, dt: 1 / rate)
+                worst = max(worst, abs(wrapAngle(bodyAngle(arrow, from: mouse) - before)))
+            }
+            return worst
+        }
+        #expect(turn(back: 5, over: 0.08) < 0.1)
+        #expect(turn(back: 8, over: 0.15) < 0.1)
+        #expect(turn(back: 30, over: 0.2) > 2.5)
+    }
+
+    // まっすぐ速く動かして一瞬で逆向きに戻しても、画面の書き換えの速さによらず、矢じりが折り返しで崩れず、大きく飛ばない
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func sharpUTurnsStayWhole(rate: CGFloat) {
+        for scale in [1, 2] as [CGFloat] {
+            for speed in [500, 1000, 1500, 2500] as [CGFloat] {
+                let arrow = Jelly(scale: scale)
+                var mouse = CGPoint(x: 300, y: 300)
+                arrow.step(to: mouse, dt: 0)
+                var worstOverlap: CGFloat = 0, worstJump: CGFloat = 0, previous = arrow.points
+                let turn = Int(0.3 * rate)
+                for i in 0..<(2 * turn) {
+                    let last = mouse
+                    mouse.x += (i < turn ? 1 : -1) * speed / rate
+                    mouse.y += 0.3
+                    arrow.step(to: mouse, dt: 1 / rate)
+                    worstOverlap = max(worstOverlap, overlapArea(arrow.points))
+                    // 動き出し（止まった形から一気に速く動かしたとき）の動きは見ず、折り返してからを見る
+                    if i >= turn {
+                        worstJump = max(worstJump, frameJump(from: previous, to: arrow.points,
+                                                             mouseMoved: CGVector(dx: mouse.x - last.x, dy: mouse.y - last.y)))
+                    }
+                    previous = arrow.points
+                }
+                let label = "大きさ \(scale) \(speed)pt/秒"
+                #expect(worstOverlap < 1 * scale * scale, "\(label): \(worstOverlap)")
+                #expect(worstJump < (12 * scale + 2400 / rate) * 1.2, "\(label): \(worstJump)")
+            }
+        }
+    }
+
+    // 左右に振ると、矢印は振り子のように行き来する。同じ向きへ回り続けない（プロペラのように回らない）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func shakingWagsInsteadOfSpinning(rate: CGFloat) {
+        for wobble in [0, 8] as [CGFloat] {
+            let arrow = Jelly(scale: 1)
+            arrow.step(to: CGPoint(x: 500, y: 500), dt: 0)
+            var net: CGFloat = 0, total: CGFloat = 0, last: CGFloat?
+            for frame in MouseScript.shake(amplitude: 100, frequency: 4, rate: rate, seconds: 2, drift: wobble) {
+                arrow.step(to: frame.mouse, dt: frame.dt)
+                let angle = bodyAngle(arrow, from: frame.mouse)
+                if let last {
+                    net += wrapAngle(angle - last)
+                    total += abs(wrapAngle(angle - last))
+                }
+                last = angle
+            }
+            #expect(total > 20, "上下のゆれ \(wobble): 振っても向きが変わらない")
+            #expect(abs(net) < .pi, "上下のゆれ \(wobble): \(net) ラジアン回り続けた")
         }
     }
 
@@ -227,6 +308,38 @@ import Testing
                 }
             }
         }
+        // 振ったり、速く折り返したりしても（胴体を先端のまわりで回すときも）、画面の書き換えの速さでほとんど変わらない。
+        // 回し始めるフレームが1つずれることはあるので、9割のフレームで比べる
+        func shake(_ t: CGFloat) -> CGPoint {
+            let x: CGFloat = 500 + 100 * min(t / 0.2, 1) * sin(2 * .pi * 4 * t)
+            return CGPoint(x: x, y: 500 + 8 * sin(2 * .pi * 1.3 * t))
+        }
+        func uTurn(_ t: CGFloat) -> CGPoint {
+            CGPoint(x: 300 + (t < 0.3 ? 1500 * t : max(450 - 1500 * (t - 0.3), 0)), y: 300 + 20 * t)
+        }
+        func typicalDifference(_ path: (CGFloat) -> CGPoint, rate: CGFloat, scale: CGFloat) -> CGFloat {
+            func shapes(_ r: CGFloat) -> [[CGPoint]] {
+                let arrow = Jelly(scale: scale)
+                arrow.step(to: path(0), dt: 0)
+                var out: [[CGPoint]] = []
+                for i in 1...Int(2 * r) {
+                    arrow.step(to: path(CGFloat(i) / r), dt: 1 / r)
+                    if i % Int(r / 60) == 0 { out.append(arrow.points) }
+                }
+                return out
+            }
+            let differences = zip(shapes(240), shapes(rate)).map { a, b in
+                zip(a, b).map { hypot($0.x - $1.x, $0.y - $1.y) }.max() ?? 0
+            }.sorted()
+            return differences[differences.count * 9 / 10]
+        }
+        for scale in [1, 2] as [CGFloat] {
+            #expect(typicalDifference(shake, rate: 120, scale: scale) < 10 * scale)
+            #expect(typicalDifference(shake, rate: 60, scale: scale) < 18 * scale)
+            #expect(typicalDifference(uTurn, rate: 120, scale: scale) < 5 * scale)
+            #expect(typicalDifference(uTurn, rate: 60, scale: scale) < 8 * scale)
+        }
+
         let angles = [240, 120, 60].map { rate in
             run(CGFloat(rate), make: { HandMotion(scale: 1) }, step: { $0.step(to: $1, dt: $2, imageHeight: 32) }, read: { [$0.angle] })
         }

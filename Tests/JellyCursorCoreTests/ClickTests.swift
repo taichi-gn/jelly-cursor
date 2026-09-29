@@ -97,6 +97,18 @@ import Testing
         #expect(abs(reach(pressedDrag, from: end) - reach(plainDrag, from: end)) < 1)
     }
 
+    // 押したまま手が少しふるえても（押した位置から数 pt のうち）、つぶれたままにする
+    @Test func tremorWhileHeldKeepsTheSquash() {
+        var hand = HandMotion(scale: 1)
+        hand.step(to: mouse, dt: 0, imageHeight: 32)
+        var random = SeededRandom(seed: 3)
+        for _ in 0..<90 {
+            let p = CGPoint(x: mouse.x + (random.next() - 0.5) * 6, y: mouse.y + (random.next() - 0.5) * 6)
+            hand.step(to: p, dt: 1.0 / 120, imageHeight: 32, pressed: true)
+        }
+        #expect(hand.squash > Tuning.Click.depth * 0.7)
+    }
+
     // 設定で「クリックで弾む」を切ったとき、伸び 0 のときはつぶれない。弾み 0 なら離しても行き過ぎない
     @Test func settingsControlTheSquash() {
         for motion in [MotionParameters(.standard, clickBounce: false), MotionParameters(MotionStyle(stretch: 0, wobble: 1))] {
@@ -155,5 +167,46 @@ extension Jelly {
     fileprivate func then(_ fn: (Jelly) -> Void) -> Jelly {
         fn(self)
         return self
+    }
+}
+
+// ボタンを押しているか。見に行く間より短いタップも見逃さない
+@Suite struct ClickWatchTests {
+    @Test func holdingTheButtonIsAPress() {
+        var watch = ClickWatch()
+        func pressed(_ down: Bool, _ since: TimeInterval, _ now: TimeInterval) -> Bool {
+            watch.isPressed(buttonsDown: down, secondsSinceLastPress: since, now: now)
+        }
+        #expect(!pressed(false, 100, 10))
+        #expect(pressed(true, 0.001, 10.5))
+        #expect(pressed(true, 0.5, 11))
+        // 離してから押した時刻が minimumPress 以上前なら、すぐ離したことにする
+        #expect(!pressed(false, 0.6, 11.1))
+    }
+
+    // 見に行く間に押して離した（トラックパッドのタップなど）ときも、押した時刻から minimumPress の間は押したことにする
+    @Test func shortTapCountsForAMoment() {
+        var watch = ClickWatch()
+        func pressed(_ down: Bool, _ since: TimeInterval, _ now: TimeInterval) -> Bool {
+            watch.isPressed(buttonsDown: down, secondsSinceLastPress: since, now: now)
+        }
+        #expect(!pressed(false, 100, 10))
+        #expect(pressed(false, 0.005, 10.016))
+        #expect(pressed(false, 0.07, 10.081))
+        #expect(!pressed(false, 0.09, 10.101))
+        // 同じタップを何度見ても、押したことにし直さない（時刻の小さなぶれでも）
+        #expect(!pressed(false, 0.1003, 10.111))
+        // 次のタップはまた数える
+        #expect(pressed(false, 0.004, 10.5))
+    }
+
+    // 見始める前のクリックは数えない
+    @Test func clicksBeforeWatchingDoNotCount() {
+        var watch = ClickWatch()
+        func pressed(_ down: Bool, _ since: TimeInterval, _ now: TimeInterval) -> Bool {
+            watch.isPressed(buttonsDown: down, secondsSinceLastPress: since, now: now)
+        }
+        #expect(!pressed(false, 0.01, 10))
+        #expect(!pressed(false, 0.026, 10.016))
     }
 }

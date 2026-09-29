@@ -50,6 +50,8 @@ package enum Tuning {
         // 先端近くの道の向きから、この角度より大きく曲がっていたら折り返しとみなす。
         // 90度の曲がり角（上へ動いてから横へ）は、これまでどおり道に沿って曲げる
         static let angle: CGFloat = 100 * .pi / 180
+        // この角度より大きく曲がった（ほぼまっすぐ戻った）ときは、1フレームで矢じりより後ろまで戻っても回す
+        static let reversalAngle: CGFloat = 150 * .pi / 180
         // 先端近くの道の向きを測る長さ（pt）。短いと手ぶれで折り返しと見てしまう
         static let reference: CGFloat = 3
         // 回すばね。行き過ぎず、短い矢印なら約0.06秒でほぼ回りきる
@@ -58,6 +60,8 @@ package enum Tuning {
         static let maxTailSpeed: CGFloat = 1500
         // 回す先がこの角度より大きく離れていたら、ほぼ逆向きとみなし、決めた側へ回す（右回りと左回りが入れ替わらないように）
         static let oppositeTurn: CGFloat = 2.6
+        // 先端が折り返しからこの道のり(pt)離れるまでは回さない。行き過ぎて少し戻したときに、向きを変えないように
+        static let minTurnTravel: CGFloat = 10
         // 折り返しが胴体より後ろへ抜け、回す先との差がこれ（ラジアン）より小さくなったら、道に沿わせるのに戻る
         static let finishAngle: CGFloat = 0.15
         // 道に沿わせるのをやめる速さと、戻す速さ（秒）
@@ -66,7 +70,7 @@ package enum Tuning {
     }
 
     // クリックしたとき。押すとクリック位置へ向けてつぶれ、離すと少し伸びる側へ弾んでから戻る
-    enum Click {
+    package enum Click {
         // 押したときにつぶれる割合（伸び 100% のとき）。横には 1/√(1 - つぶれ) 倍に太る
         static let depth: CGFloat = 0.16
         // つぶれと伸びの上限。形が裏返らないように
@@ -78,8 +82,13 @@ package enum Tuning {
         // 離したとき。つぶれの約3割だけ伸びる側へ行き過ぎて、約0.4秒で戻る（弾み 100% のとき）
         static let releaseOmega: CGFloat = 30
         static let releaseDampingRatio: CGFloat = 0.35
-        // 押したまま、この道のり(pt)動かすとつぶれを戻しきる（ドラッグの間はふつうの動きにする）
+        // 押した位置から dragDeadZone(pt) までは手のふるえとみなし、そこから dragRelease(pt) 離れるとつぶれを戻しきる
+        // （ドラッグの間はふつうの動きにする）
+        static let dragDeadZone: CGFloat = 4
         static let dragRelease: CGFloat = 12
+        // これより短いクリック（トラックパッドのタップなど）も、この秒数は押したことにする。
+        // ボタンを見に行く間（眠っている間は1/60秒）より短いクリックも見逃さず、つぶれて弾むのが見えるように
+        package static let minimumPress: TimeInterval = 0.08
         // 戻りきったとみなす、つぶれの割合
         static let restSnap: CGFloat = 0.001
     }

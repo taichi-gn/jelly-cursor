@@ -156,11 +156,14 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
-# タブを切り替えたあとに、キーボード操作用の青い枠（フォーカスの枠）が出ないこと。
-# システム設定の「キーボードナビゲーション」がオンのときに出るので、その設定にして確かめる
+# タブを切り替えたあとの画面を撮る（キーボード操作用の青い枠（フォーカスの枠）が出ていないかを、画像で見る）。
+# 枠はシステム設定の「キーボードナビゲーション」がオンのときに出るので、その設定にして撮り、あとで元に戻す。
+# 枠は薄い色で、画像の数値だけでは確かめにくいので、ここは撮るだけにしている
+keyboard_ui=$(defaults read NSGlobalDomain AppleKeyboardUIMode 2>/dev/null || true)
 defaults write NSGlobalDomain AppleKeyboardUIMode -int 2
 launch -OpenSettings general
-IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
+bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "設定画面が開かなかった"
+IFS=, read -r wx wy ww wh <<<"$bounds"
 if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
     sleep 0.5
     for tab in "motion 193" "general 143" "cursors 254"; do
@@ -174,7 +177,11 @@ else
     note "クリックを送る許可が無いので、フォーカスの枠の確認は飛ばした"
 fi
 quit
-defaults delete NSGlobalDomain AppleKeyboardUIMode
+if [ -n "$keyboard_ui" ]; then
+    defaults write NSGlobalDomain AppleKeyboardUIMode -int "$keyboard_ui"
+else
+    defaults delete NSGlobalDomain AppleKeyboardUIMode
+fi
 
 # メニューバーのメニューを開いて撮る。macOS 26 ではメニューバーのアイコンが窓の一覧に出ず、
 # クリックする場所が分からないので、起動時の指定でアプリに開かせる。
@@ -203,7 +210,8 @@ before=$("$TOOLS/diagnose" JellyCursor | grep frontmost)
 note "開く前: $before"
 launch -OpenSettings motion
 pid=$(pgrep -x JellyCursor)
-IFS=, read -r wx wy ww wh <<<"$("$TOOLS/window-bounds" JellyCursor)"
+bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "設定画面が開かなかった"
+IFS=, read -r wx wy ww wh <<<"$bounds"
 if "$TOOLS/click" $((wx + ww / 2)) $((wy + 12)); then
     sleep 1
     note "クリックしたあと: $("$TOOLS/diagnose" JellyCursor | grep frontmost)"
@@ -257,7 +265,8 @@ moving=$(awk -v a="$start" -v b="$(cpu_seconds "$pid")" 'BEGIN { printf "%.1f", 
 note "動かしている間の CPU: ${moving}%"
 "$TOOLS/diagnose" JellyCursor
 # クリックで弾むこと。押している間は矢印がクリック位置へ向けてつぶれて短くなり、離して落ち着くと元の大きさに戻る。
-# Finder の窓より下の黒い机の上で押し、矢印の白い縁を囲む四角の大きさ（対角線）を比べる
+# Finder の窓より下の黒い机の上で押し、矢印の白い縁を囲む四角の高さを比べる
+# （矢印は右下へのびているので、つぶれると高さが縮む。横には少し太るので、対角線より高さのほうが差が大きい）
 cx=600; cy=600
 region="$((cx - 8)),$((cy - 8)),48,48"
 if "$TOOLS/click" "$cx" "$cy"; then
@@ -270,15 +279,15 @@ if "$TOOLS/click" "$cx" "$cy"; then
     wait "$clicker"
     sleep 1.5
     screencapture -x -R"$region" "$OUT/click-released.png"
-    diagonal() {
-        "$TOOLS/image-stats" "$1" | sed -E 's/.*light-box=([0-9]+)x([0-9]+).*/\1 \2/' | awk '{ printf "%.1f", sqrt($1 * $1 + $2 * $2) }'
+    box() {
+        "$TOOLS/image-stats" "$1" | sed -E 's/.*light-box=([0-9]+x[0-9]+).*/\1/'
     }
-    rest=$(diagonal "$OUT/click-rest.png")
-    pressed=$(diagonal "$OUT/click-pressed.png")
-    released=$(diagonal "$OUT/click-released.png")
-    note "クリック: 押す前 ${rest}px / 押している間 ${pressed}px / 離したあと ${released}px（矢印を囲む四角の対角線）"
-    awk -v p="$pressed" -v r="$rest" 'BEGIN { exit !(r > 5 && p < r * 0.95) }' || fail "押しても矢印がつぶれていない"
-    awk -v a="$released" -v r="$rest" 'BEGIN { exit !(a - r < 1.5 && r - a < 1.5) }' || fail "離したあと元の大きさに戻っていない"
+    rest=$(box "$OUT/click-rest.png")
+    pressed=$(box "$OUT/click-pressed.png")
+    released=$(box "$OUT/click-released.png")
+    note "クリック: 押す前 ${rest} / 押している間 ${pressed} / 離したあと ${released}（矢印を囲む四角の幅x高さ px）"
+    awk -v p="${pressed#*x}" -v r="${rest#*x}" 'BEGIN { exit !(r > 5 && p < r * 0.93) }' || fail "押しても矢印がつぶれていない"
+    [ "$released" = "$rest" ] || fail "離したあと元の大きさに戻っていない"
 else
     note "クリックを送る許可が無いので、クリックの確認は飛ばした"
 fi

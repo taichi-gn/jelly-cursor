@@ -11,8 +11,8 @@ guard CGPreflightPostEventAccess() else {
     print("post events allowed: false")
     exit(2)
 }
-for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+for (type, wait) in [(CGEventType.leftMouseDown, hold), (.leftMouseUp, 0.05)] {
     let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)!
     event.post(tap: .cghidEventTap)
-    usleep(useconds_t(hold * 1_000_000))
+    usleep(useconds_t(wait * 1_000_000))
 }
