@@ -18,8 +18,12 @@ struct Heading {
     private var angularVel: CGFloat = 0
     private var smoothedVel = CGVector.zero
     private var idleTime: CGFloat = 0
-    // 手ぶれより大きく、向きを変えるほど速く動いていない状態が続いている秒数
+    // 手ぶれしかしていない（止まっているときも含む）状態が続いている秒数
+    private var quietTime: CGFloat = 0
+    // 手ぶれだけか、今の向きとは違う向きへゆっくり動いている状態が続いている秒数
     private var slowTime: CGFloat = 0
+    // 前のフレームで、手ぶれより大きく動いていたか
+    private var wasMoving = false
     // マウス位置をならした点。手ぶれならこの点のまわりにとどまり、動かしていればこの点から離れていく
     private var calm: CGPoint?
     private var travel: CGFloat = 0
@@ -75,20 +79,28 @@ struct Heading {
         let settled = CGPoint(x: center.x + (mouse.x - center.x) * kc, y: center.y + (mouse.y - center.y) * kc)
         calm = settled
         // 手ぶれ（ならした点のまわりで小さく行き来するだけ）は、動いた距離に数えず、向きも変えない
-        let moving = hypot(mouse.x - settled.x, mouse.y - settled.y) > Tuning.Turn.tremorRadius
-        let fast = moving && hypot(smoothedVel.dx, smoothedVel.dy) > Tuning.Turn.minSpeed
+        let lag = hypot(mouse.x - settled.x, mouse.y - settled.y)
+        let moving = lag > Tuning.Turn.tremorRadius
+        let speed = hypot(smoothedVel.dx, smoothedVel.dy)
+        let fast = moving && speed > Tuning.Turn.minSpeed
         if mouse == last {
             idleTime += dt
-            if idleTime >= Tuning.Turn.travelResetDelay { travel = 0 }
         } else {
             idleTime = 0
-            if moving { travel += hypot(mouse.x - last.x, mouse.y - last.y) }
+            // 動き出したと分かったフレームでは、それまで手ぶれとして数えずにいたぶん（ならした点からの遅れ）も数える。
+            // 画面の書き換えが速いほど細かく刻まれて、数えずにいるぶんが変わらないように
+            if moving { travel += wasMoving ? hypot(mouse.x - last.x, mouse.y - last.y) : lag }
         }
-        // ゆっくり動かしている間（手ぶれを含む）も、止めたときより少し長く続いたら、元の向きへ戻す。
-        // 速く動かしたあとにゆっくり動かすと、前の向きのまま（後ろ向きに進むなど）残らないように。
+        wasMoving = moving
+        // 止まっているか手ぶれだけの状態が続いたら、動いた距離を数え直す（次に少し動かしただけで向きを変えないように）
+        quietTime = moving ? 0 : quietTime + dt
+        if quietTime >= Tuning.Turn.travelResetDelay { travel = 0 }
+        // 手ぶれだけの状態や、今の向きから大きく外れた向きへゆっくり動かす状態が続いたら、止めたときと同じく元の向きへ戻す。
+        // 速く動かしたあとにゆっくり戻すと、前の向きのまま後ろ向きに進むように見えないように。
+        // 今の向きのままゆっくり動かしているとき（速さが向きを変える速さの前後で揺れるドラッグなど）は、向きを保つ。
         // 指したところで少し行き過ぎて戻すくらいの間は、向きを変えない
-        slowTime = fast ? 0 : slowTime + dt
-        if slowTime >= Tuning.Turn.slowReturnDelay { travel = 0 }
+        let astray = speed > 0 && (smoothedVel.dx * cos(angle) + smoothedVel.dy * sin(angle)) / speed < Tuning.Turn.astrayCosine
+        slowTime = !moving || (!fast && astray) ? slowTime + dt : 0
 
         let returning = idleTime >= Tuning.Turn.returnDelay || slowTime >= Tuning.Turn.slowReturnDelay
         if returning {

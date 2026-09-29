@@ -59,7 +59,7 @@ package final class Jelly: CursorFigure {
     }
 
     package func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool) {
-        if started, isJump(from: lastMouse, to: mouse, dt: dt) { restart() }
+        if started, isJump(from: lastMouse, to: mouse, dt: dt) { restart(at: mouse) }
         if !started {
             started = true
         } else if dt > 0 {
@@ -100,7 +100,8 @@ package final class Jelly: CursorFigure {
     }
 
     // ポインタが飛んだとき、動きを止まった状態から始め直す（クリックでつぶれている状態はそのまま）
-    private func restart() {
+    private func restart(at mouse: CGPoint) {
+        squish.follow(jumpTo: mouse)
         trail = Self.makeTrail(shape: shape, stretch: stretchScale)
         heading = Heading(restAngle: shape.baseAngle, motion: motion)
         length = shape.length
@@ -123,7 +124,9 @@ package final class Jelly: CursorFigure {
         var folded = false
         if let fold {
             let head = shape.length + (fold.cosine < cos(Tuning.Fold.reversalAngle) ? moved : 0)
-            folded = fold.distance < (pivot == nil ? min(span, head) : span)
+            // 回し始めたら、折り返しが胴体より後ろへ抜けるまで続ける。ゆっくり折り返したときは直近の道が短いので、
+            // 回す先が決まる（先端が折り返しから minTurnTravel 離れる）までは抜けたとみなさない（回さないまま終わらないように）
+            folded = fold.distance < (pivot == nil ? min(span, head) : max(span, Tuning.Fold.minTurnTravel + Tuning.Fold.reference))
         }
         if folded, pivot == nil {
             pivot = Pivot(angle: atan2(bodyBack.dy, bodyBack.dx),
@@ -132,8 +135,12 @@ package final class Jelly: CursorFigure {
         if var p = pivot {
             // 回す先は、先端から折り返し（無くなったら胴体の長さ）までの道の向き。新しく進む向きの後ろ。
             // 先端が折り返しから少し離れるまでは回さない（行き過ぎて少し戻したときに、くるっと向きを変えないように）
-            let end = trail.point(at: min(max(fold?.distance ?? span, Tuning.Fold.reference), trail.length))
-            let maxSpeed = Tuning.Fold.maxTailSpeed / length
+            // ゆっくり折り返したときは直近の道が短いので、覚えている道の形まで見る（回す先が先端の近くにとどまって回せないことがないように）
+            let end = trail.point(at: min(max(fold?.distance ?? span, Tuning.Fold.reference), trail.pathLength))
+            // ゆっくり折り返したときは、胴体の端もゆっくり回す（先端がゆっくり動いているのに、くるっと一瞬で回らないように）
+            let tipSpeed = trail.length / Tuning.Trail.duration
+            let tailSpeed = min(max(tipSpeed * Tuning.Fold.tailSpeedRatio, Tuning.Fold.minTailSpeed), Tuning.Fold.maxTailSpeed)
+            let maxSpeed = tailSpeed / length
             var error: CGFloat = 0
             // 回す先が回る速さ。ばねはこの速さに合わせて回しながら追う（合わせないと、円を描き続ける間はいつまでも
             // 回す先に追いつけず、回し終わらない。回している間は伸びないので、短いままになる）
@@ -241,6 +248,8 @@ package final class Jelly: CursorFigure {
             target = 1 - t * t * (3 - 2 * t)
         }
         if pathEngagement >= Tuning.Trail.gateHold {
+            // 速く動き出して1フレームで沿わせたい状態になったときは、下げてから保つ（下げる前に保って、逆向きのまま沿わせないように）
+            if engagedTime == 0 { pathGate = min(pathGate, target) }
             engagedTime += dt
             let forced = min(max((engagedTime - Tuning.Trail.gateForceDelay) / Tuning.Trail.gateForceTime, 0), 1)
             target = max(target, pathGate, forced)

@@ -38,9 +38,9 @@ package struct HandMotion {
 
     // imageHeight は描く画像の高さ。伸びのずれをピクセルに直して、落ち着いたかを決めるのに使う
     package mutating func step(to mouse: CGPoint, dt: CGFloat, imageHeight: CGFloat, pressed: Bool = false) {
-        squish.step(pressed: pressed, mouse: mouse, dt: dt)
         // ポインタが飛んだら、新しい位置で止まっている状態から始め直す（飛んだ向きへ大きく回らないように）
         if let lastMouse, isJump(from: lastMouse, to: mouse, dt: dt) {
+            squish.follow(jumpTo: mouse)
             heading = Heading(restAngle: .pi / 2, motion: motion)
             trail = Trail()
             stretchSpring = SpringValue(omega: Tuning.Hand.omega, dampingRatio: motion.handDampingRatio)
@@ -49,6 +49,7 @@ package struct HandMotion {
             angle = .pi / 2
             self.lastMouse = nil
         }
+        squish.step(pressed: pressed, mouse: mouse, dt: dt)
         if let lastMouse, dt > 0 {
             heading.turn(from: lastMouse, to: mouse, dt: dt)
             let k = 1 - exp(-Tuning.Hand.velocitySmoothing * dt)

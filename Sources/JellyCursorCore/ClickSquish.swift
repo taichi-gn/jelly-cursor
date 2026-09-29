@@ -31,6 +31,11 @@ struct ClickSquish {
         max(abs(value - target), abs(velocity) * Tuning.Settle.velocityWeight) * size
     }
 
+    // ポインタが飛んだとき、押している位置も一緒に移す（飛んだ距離をドラッグとみなして、つぶれを戻さないように）
+    mutating func follow(jumpTo mouse: CGPoint) {
+        if isPressed { pressedAt = mouse }
+    }
+
     mutating func step(pressed: Bool, mouse: CGPoint, dt: CGFloat) {
         if pressed, !isPressed {
             pressedAt = mouse

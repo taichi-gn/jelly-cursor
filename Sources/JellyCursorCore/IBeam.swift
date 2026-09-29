@@ -73,6 +73,7 @@ package final class IBeam: CursorFigure {
     package func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool) {
         // ポインタが飛んだら、新しい位置で止まっている状態から始め直す（飛んだ速さで大きく伸びないように）
         if let lastMouse, isJump(from: lastMouse, to: mouse, dt: dt) {
+            squish.follow(jumpTo: mouse)
             widen = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
             stretch = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)
             lean = SpringValue(omega: Tuning.IBeam.omega, dampingRatio: motion.iBeamDampingRatio)

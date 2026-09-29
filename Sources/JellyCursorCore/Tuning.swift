@@ -31,7 +31,7 @@ package enum Tuning {
         static let gateHold: CGFloat = 0.9
         // 沿わせてよい度合いを下げる速さと上げる速さ（秒）。速く動かし始めたときに間に合うよう、下げるのは急ぐ
         static let gateCloseTime: CGFloat = 0.003
-        static let gateOpenTime: CGFloat = 0.015
+        static let gateOpenTime: CGFloat = 0.05
         // 道に沿わせたい状態がこの秒数続いても向きがそろわなければ、さらに gateForceTime 秒かけて沿わせる
         static let gateForceDelay: CGFloat = 0.15
         static let gateForceTime: CGFloat = 0.15
@@ -53,12 +53,14 @@ package enum Tuning {
         static let tremorSmoothing: CGFloat = 0.1
         // 角度のずれをピクセルに換算するときの尾の長さ
         static let armLength: CGFloat = 30
-        // 位置が変わらない（またはゆっくりしか動かない）状態がこの秒数続いたら、元の向き（左上）へ戻す。
+        // 位置が変わらない状態がこの秒数続いたら、元の向き（左上）へ戻す。
         // 振り子のように1回だけ行き過ぎ、折り返したら弾まずに収まる。
         // 行き過ぎの大きさは returnSwingDampingRatio で決まる（0.4 で約25%、1 で行き過ぎない）
         static let returnDelay: CGFloat = 0.2
-        // ゆっくりしか動かない（手ぶれを含む）状態がこの秒数続いたら、元の向きへ戻し、動いた距離も数え直す
+        // 手ぶれだけの状態や、今の向きから外れた向きへゆっくり動かす状態がこの秒数続いたら、元の向きへ戻す。
+        // 動いた向きと今の向きの cos が astrayCosine より小さい（60度より開いている）と、外れているとみなす
         static let slowReturnDelay: CGFloat = 0.4
+        static let astrayCosine: CGFloat = 0.5
         static let returnOmega: CGFloat = 18
         static let returnSwingDampingRatio: CGFloat = 0.4
         static let returnSettleDampingRatio: CGFloat = 1.0
@@ -82,6 +84,9 @@ package enum Tuning {
         static let omega: CGFloat = 55
         // 回している間に胴体の端が動く速さの上限（pt/秒）。長いうちはゆっくり、縮むにつれて速く回る
         static let maxTailSpeed: CGFloat = 1500
+        // ゆっくり折り返したときは、胴体の端が動く速さを、先端の速さのこの倍までにする（ただし minTailSpeed pt/秒 までは許す）
+        static let tailSpeedRatio: CGFloat = 4
+        static let minTailSpeed: CGFloat = 300
         // 回す先がこの角度より大きく離れていたら、ほぼ逆向きとみなし、決めた側へ回す（右回りと左回りが入れ替わらないように）
         static let oppositeTurn: CGFloat = 2.6
         // 折り返しで回した向きの合計がこれ（ラジアン）を超えていたら、ほぼ逆向きへ回すときは巻き戻す側へ回す
@@ -172,6 +177,8 @@ package enum Tuning {
     enum Jump {
         static let distance: CGFloat = 250
         static let speed: CGFloat = 15000
+        // 表示が詰まったフレーム（経過時間が上限で切られたとき）で、飛んだとみなす距離(pt)
+        static let stalledDistance: CGFloat = 1000
     }
 
     enum Settle {

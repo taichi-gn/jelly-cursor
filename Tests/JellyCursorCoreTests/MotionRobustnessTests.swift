@@ -125,6 +125,29 @@ import Testing
         #expect(turn(back: 30, over: 0.2) > 2.5)
     }
 
+    // 向きを変えるかどうかの境目くらい（25〜35pt）だけ動かしたとき、画面の書き換えの速さで向きを変えたり変えなかったりしない
+    @Test func smallMovesTurnTheSameAtAnyRefreshRate() {
+        for distance in [25, 30, 35] as [CGFloat] {
+            for speed in [150, 300, 800] as [CGFloat] {
+                let turns = [60, 120, 240].map { (rate: CGFloat) -> CGFloat in
+                    let arrow = Jelly(scale: 1)
+                    let start = CGPoint(x: 300, y: 300)
+                    arrow.step(to: start, dt: 0)
+                    let before = bodyAngle(arrow, from: start)
+                    var mouse = start, t: CGFloat = 0
+                    while t < distance / speed + 0.15 {
+                        t += 1 / rate
+                        mouse = CGPoint(x: start.x + min(speed * t, distance), y: start.y)
+                        arrow.step(to: mouse, dt: 1 / rate)
+                    }
+                    return abs(wrapAngle(bodyAngle(arrow, from: mouse) - before))
+                }
+                let spread = (turns.max() ?? 0) - (turns.min() ?? 0)
+                #expect(spread < 0.3, "\(distance)pt を \(speed)pt/秒: 60/120/240Hz で \(turns) ラジアン回った")
+            }
+        }
+    }
+
     // まっすぐ速く動かして一瞬で逆向きに戻しても、画面の書き換えの速さによらず、矢じりが折り返しで崩れず、大きく飛ばない
     @Test(arguments: [60, 120, 240] as [CGFloat])
     func sharpUTurnsStayWhole(rate: CGFloat) {
@@ -203,35 +226,49 @@ import Testing
         }
     }
 
-    // 止まった矢印の胴体と逆向きへ動き出しても、胴体が先端へ縮んで小さな塊にならない。少しだけ動かしたとき・止まった矢印から
-    // 速く動き出したとき・行き過ぎて一瞬止めてから戻したとき・ゆっくり折り返したときを見る
-    @Test(arguments: [60, 120, 240] as [CGFloat])
+    // 止まった矢印の胴体と逆向きへ動き出しても、胴体が先端へ縮んで小さな塊にならず、1フレームで裏返らない。少しだけ動かしたとき・
+    // 止まった矢印から速く動き出したとき・行き過ぎて一瞬止めてから戻したとき・ゆっくり折り返したときを見る。
+    // 表示が詰まったとき（30Hz）も見る
+    @Test(arguments: [30, 60, 120, 240] as [CGFloat])
     func movingAgainstTheBodyDoesNotCollapse(rate: CGFloat) {
         let rest = ArrowShape(scale: 1).length
         func shortestReach(_ position: (CGFloat) -> CGPoint, seconds: CGFloat) -> CGFloat {
+            motion(position, seconds: seconds).shortest
+        }
+        // いちばん短くなったときの長さと、1フレームでいちばん大きく動いた量（マウスの動きを差し引いたもの）
+        func motion(_ position: (CGFloat) -> CGPoint, seconds: CGFloat) -> (shortest: CGFloat, jump: CGFloat) {
             let arrow = Jelly(scale: 1)
-            arrow.step(to: position(0), dt: 0)
-            var shortest = CGFloat.infinity
+            var last = position(0)
+            arrow.step(to: last, dt: 0)
+            var shortest = CGFloat.infinity, jump: CGFloat = 0, previous = arrow.points
             for i in 1...Int((seconds * rate).rounded()) {
                 let mouse = position(CGFloat(i) / rate)
                 arrow.step(to: mouse, dt: 1 / rate)
                 shortest = min(shortest, arrow.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0)
+                jump = max(jump, frameJump(from: previous, to: arrow.points, mouseMoved: CGVector(dx: mouse.x - last.x, dy: mouse.y - last.y)))
+                previous = arrow.points
+                last = mouse
             }
-            return shortest
+            return (shortest, jump)
         }
         // 胴体は右下（止まったときの向き）。そちらや真下・右へ動かす
         for degrees in [-67, -45, -90, 0] as [CGFloat] {
             let direction = CGVector(dx: cos(degrees * .pi / 180), dy: sin(degrees * .pi / 180))
-            for speed in [150, 400, 1200, 3000] as [CGFloat] {
+            for speed in [150, 400, 1200, 3000, 6000] as [CGFloat] {
                 // 25pt だけ動かして止める
                 let nudge = shortestReach({ t in
                     let d = min(speed * t, 25)
                     return CGPoint(x: 300 + direction.dx * d, y: 300 + direction.dy * d)
                 }, seconds: 0.8)
                 // そのまま動き続ける
-                let start = shortestReach({ t in CGPoint(x: 300 + direction.dx * speed * t, y: 300 + direction.dy * speed * t) }, seconds: 0.5)
+                let start = motion({ t in CGPoint(x: 300 + direction.dx * speed * t, y: 300 + direction.dy * speed * t) }, seconds: 0.5)
                 #expect(nudge > 0.7 * rest, "\(degrees)° \(speed)pt/秒で少し動かした: \(nudge)")
-                #expect(start > 0.7 * rest, "\(degrees)° \(speed)pt/秒で動き出した: \(start)")
+                #expect(start.shortest > 0.7 * rest, "\(degrees)° \(speed)pt/秒で動き出した: \(start.shortest)")
+                // 速く動き出したときは、胴体はマウスが1フレームに動くほどしか跳ばない（一気に裏返らない）。
+                // ゆっくり動き出したときは、向きのばねで胴体を回すぶん、マウスより大きく動いてよい
+                if speed >= 900 {
+                    #expect(start.jump < 1.2 * speed / rate + 2, "\(degrees)° \(speed)pt/秒で動き出した: 1フレームで \(start.jump)")
+                }
             }
         }
         for pause in [0.08, 0.12, 0.18] as [CGFloat] {
@@ -365,9 +402,10 @@ import Testing
         }
     }
 
-    // 速く動かしたあと、ゆっくり動かし続けると、矢印も指も元の向きへ戻る（前の向きのまま後ろ向きに進まない）
+    // 速く動かしたあと、別の向きへゆっくり動かし続けても、前の向きのまま（後ろ向きや横向きに進むように）残らない。
+    // 矢印も指も、元の向きへ戻るか、ゆっくり動かしている向きからあまり外れない向きを指す
     @Test(arguments: [60, 120, 240] as [CGFloat])
-    func creepingReturnsToRest(rate: CGFloat) {
+    func creepingDoesNotKeepTheOldDirection(rate: CGFloat) {
         let restBody = { () -> CGFloat in
             let arrow = Jelly(scale: 1)
             arrow.step(to: .zero, dt: 0)
@@ -376,7 +414,7 @@ import Testing
         for (degrees, speed) in [(180, 30), (180, 60), (90, 60), (-90, 40)] as [(CGFloat, CGFloat)] {
             let arrow = Jelly(scale: 1)
             var hand = HandMotion(scale: 1)
-            let direction = CGVector(dx: cos(degrees * .pi / 180), dy: sin(degrees * .pi / 180))
+            let creep = degrees * .pi / 180
             var mouse = CGPoint(x: 300, y: 300)
             arrow.step(to: mouse, dt: 0)
             hand.step(to: mouse, dt: 0, imageHeight: 32)
@@ -385,15 +423,45 @@ import Testing
                 t += 1 / rate
                 // 右へ速く 0.2 秒動かしてから、1pt ごとの位置でゆっくり動かす
                 mouse = t < 0.2 ? CGPoint(x: 300 + 1500 * t, y: 300)
-                    : CGPoint(x: (600 + direction.dx * speed * (t - 0.2)).rounded(), y: (300 + direction.dy * speed * (t - 0.2)).rounded())
+                    : CGPoint(x: (600 + cos(creep) * speed * (t - 0.2)).rounded(), y: (300 + sin(creep) * speed * (t - 0.2)).rounded())
                 arrow.step(to: mouse, dt: 1 / rate)
                 hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
             }
-            let arrowOff = abs(wrapAngle(bodyAngle(arrow, from: mouse) - restBody))
-            let handOff = abs(wrapAngle(hand.angle - .pi / 2))
-            #expect(arrowOff < 0.15, "\(degrees)° \(speed)pt/秒: 矢印が元の向きから \(arrowOff) ラジアン")
-            #expect(handOff < 0.15, "\(degrees)° \(speed)pt/秒: 指が上から \(handOff) ラジアン")
+            // 矢印の指す向きは、胴体の向きの反対
+            let body = bodyAngle(arrow, from: mouse)
+            let arrowOff = min(abs(wrapAngle(body - restBody)), abs(wrapAngle(body + .pi - creep)))
+            let handOff = min(abs(wrapAngle(hand.angle - .pi / 2)), abs(wrapAngle(hand.angle - creep)))
+            #expect(arrowOff < 1.1, "\(degrees)° \(speed)pt/秒: 矢印が元の向きからも動く向きからも \(arrowOff) ラジアン外れた")
+            #expect(handOff < 1.1, "\(degrees)° \(speed)pt/秒: 指が上からも動く向きからも \(handOff) ラジアン外れた")
         }
+    }
+
+    // 速さが向きを変える速さの前後で揺れるゆっくりしたドラッグでは、向きを保つ（元の向きとの間を行き来しない）
+    @Test(arguments: [60, 240] as [CGFloat])
+    func slowDragKeepsItsDirection(rate: CGFloat) {
+        let direction = -135 * CGFloat.pi / 180
+        let arrow = Jelly(scale: 1)
+        var hand = HandMotion(scale: 1)
+        var mouse = CGPoint(x: 800, y: 800), distance: CGFloat = 0, t: CGFloat = 0
+        arrow.step(to: mouse, dt: 0)
+        hand.step(to: mouse, dt: 0, imageHeight: 32)
+        var arrowLow = CGFloat.infinity, arrowHigh = -CGFloat.infinity, handLow = CGFloat.infinity, handHigh = -CGFloat.infinity
+        while t < 5 {
+            t += 1 / rate
+            distance += (80 + 30 * sin(2 * .pi * t / 1.2)) / rate
+            mouse = CGPoint(x: 800 + cos(direction) * distance, y: 800 + sin(direction) * distance)
+            arrow.step(to: mouse, dt: 1 / rate)
+            hand.step(to: mouse, dt: 1 / rate, imageHeight: 32)
+            guard t > 1 else { continue }
+            let body = wrapAngle(bodyAngle(arrow, from: mouse) - direction - .pi)
+            arrowLow = min(arrowLow, body)
+            arrowHigh = max(arrowHigh, body)
+            let pointing = wrapAngle(hand.angle - direction)
+            handLow = min(handLow, pointing)
+            handHigh = max(handHigh, pointing)
+        }
+        #expect(arrowHigh - arrowLow < 0.3, "矢印の向きが \(arrowHigh - arrowLow) ラジアン揺れた")
+        #expect(handHigh - handLow < 0.3, "指の向きが \(handHigh - handLow) ラジアン揺れた")
     }
 
     // ほかのアプリがポインタを遠くへ動かした（1フレームで飛んだ）ときは、新しい位置で止まっている形から始め直す。
@@ -424,6 +492,27 @@ import Testing
             #expect(handTurn < 0.01, "\(distance)pt 飛んだ: 指が \(handTurn) ラジアン回った")
             #expect(arrow.isSettled && beam.isSettled && hand.isSettled)
         }
+        // 押したまま飛んでも、クリックのつぶれはそのまま（飛んだ距離をドラッグとみなさない）
+        let pressedArrow = Jelly(scale: 1)
+        let start = CGPoint(x: 300, y: 300), end = CGPoint(x: 1300, y: 600)
+        pressedArrow.step(to: start, dt: 0, pressed: true)
+        for _ in 0..<30 { pressedArrow.step(to: start, dt: 1 / 120, pressed: true) }
+        let squashed = pressedArrow.points.map { hypot($0.x - start.x, $0.y - start.y) }.max() ?? 0
+        for _ in 0..<30 { pressedArrow.step(to: end, dt: 1 / 120, pressed: true) }
+        let afterJump = pressedArrow.points.map { hypot($0.x - end.x, $0.y - end.y) }.max() ?? 0
+        #expect(abs(afterJump - squashed) < 0.1, "押したまま飛んだら、つぶれが \(squashed) から \(afterJump) に変わった")
+        // 表示が詰まったフレーム（経過時間は上限の 1/30 秒）に速いフリックで 600pt 動いても、飛んだとはみなさない
+        let flick = Jelly(scale: 1)
+        var mouse = CGPoint(x: 300, y: 300)
+        flick.step(to: mouse, dt: 0)
+        for _ in 0..<24 {
+            mouse.x += 6000.0 / 120
+            flick.step(to: mouse, dt: 1 / 120)
+        }
+        mouse.x += 600
+        flick.step(to: mouse, dt: CGFloat(Tuning.Render.maxFrameStep))
+        let stretched = flick.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0
+        #expect(stretched > 3 * ArrowShape(scale: 1).length, "表示が詰まったフリックで伸びが消えた: \(stretched)")
     }
 
     // 表示が詰まって1フレームが長くなっても（0.1〜0.5 秒）、ばねが暴れず、形はマウスの近くに収まる
