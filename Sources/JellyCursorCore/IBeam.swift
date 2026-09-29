@@ -43,6 +43,7 @@ package final class IBeam: CursorFigure {
     private let maxLean: CGFloat
     private var smoothedVel = CGVector.zero
     private var lastMouse: CGPoint?
+    private var squish: ClickSquish
     private let height: CGFloat
     // 縦棒の中心線。クリック位置より少し左にあるので、ここを基準に広げて縦棒が横にずれないようにする
     private let stemCenterX: CGFloat
@@ -54,6 +55,7 @@ package final class IBeam: CursorFigure {
         maxWiden = Tuning.IBeam.maxWiden * motion.stretch
         maxStretch = Tuning.IBeam.maxStretch * motion.stretch
         maxLean = Tuning.IBeam.maxLean * motion.stretch
+        squish = ClickSquish(motion: motion)
         vertices = Self.outline.map { p in
             let t = Self.smoothstep(Tuning.IBeam.stemHalfHeight, Tuning.IBeam.serifStart, abs(p.y))
             return Vertex(offset: CGVector(dx: p.x * scale, dy: -p.y * scale),
@@ -66,7 +68,7 @@ package final class IBeam: CursorFigure {
         stemCenterX = ((stemXs.min() ?? 0) + (stemXs.max() ?? 0)) / 2 * scale
     }
 
-    package func step(to mouse: CGPoint, dt: CGFloat) {
+    package func step(to mouse: CGPoint, dt: CGFloat, pressed: Bool) {
         if let lastMouse, dt > 0 {
             let k = 1 - exp(-Tuning.IBeam.velocitySmoothing * dt)
             smoothedVel.dx += ((mouse.x - lastMouse.x) / dt - smoothedVel.dx) * k
@@ -81,18 +83,24 @@ package final class IBeam: CursorFigure {
         }
         lastMouse = mouse
         layOut(at: mouse)
+        // クリックしたら、中心（クリック位置）へ向けて縦につぶし、そのぶん横に太らせる
+        squish.step(pressed: pressed, mouse: mouse, dt: dt)
+        squish.apply(to: &points, anchor: CGPoint(x: mouse.x + stemCenterX, y: mouse.y), axis: CGVector(dx: 0, dy: 1))
         // 形の変化を、I 字の高さに対するピクセル数に直して比べる
-        let worst = max(widen.restError, stretch.restError, lean.restError) * height
+        let worst = max(max(widen.restError, stretch.restError, lean.restError) * height, squish.restError(size: height))
         isSettled = worst < Tuning.Settle.threshold
     }
 
+    // 太り・伸びのばねは、戻るときに反対側へ行き過ぎる。伸び・弾みを大きくしたときに幅や高さが 0 以下になって
+    // 形が裏返らないよう、倍率に下限を設ける（標準の設定では下限まで行かない）
     private func layOut(at mouse: CGPoint) {
-        let heightScale = 1 + stretch.value - Tuning.IBeam.squash * widen.value
-        let thinning = 1 / sqrt(1 + stretch.value)
+        let minScale = Tuning.IBeam.minScale
+        let heightScale = max(1 + stretch.value - Tuning.IBeam.squash * widen.value, minScale)
+        let thinning = 1 / sqrt(max(1 + stretch.value, minScale))
         for (i, v) in vertices.enumerated() {
             let y = v.offset.dy * heightScale
             // y は上向き。lean が正なら上側を右へずらして / にする
-            let x = stemCenterX + (v.offset.dx - stemCenterX) * (1 + widen.value * v.widenWeight) * thinning
+            let x = stemCenterX + (v.offset.dx - stemCenterX) * max(1 + widen.value * v.widenWeight, minScale) * thinning
                 + lean.value * y
             points[i] = CGPoint(x: mouse.x + x, y: mouse.y + y)
         }

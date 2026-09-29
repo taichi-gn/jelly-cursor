@@ -54,6 +54,25 @@ struct Trail {
         return CGVector(dx: (b.x - a.x) / d, dy: (b.y - a.y) / d)
     }
 
+    // 先端から道をたどり、先端近くの向きから Fold.angle より大きく曲がった（折り返した）ところまでの道のり。
+    // 先端近くの向きは、先端から Fold.reference px 後ろの点への向き。手ぶれで折り返しと見ないよう、
+    // それより短い道や、先端のすぐ後ろで向きが定まらない道では nil
+    func foldDistance() -> CGFloat? {
+        let reference = Tuning.Fold.reference
+        guard polyline.count >= 3, length > reference else { return nil }
+        let tip = polyline[0], ref = point(at: reference)
+        let rx = ref.x - tip.x, ry = ref.y - tip.y
+        let rl = hypot(rx, ry)
+        guard rl > reference / 2 else { return nil }
+        let limit = cos(Tuning.Fold.angle)
+        for i in 1..<polyline.count where distances[i] > reference {
+            let sx = polyline[i].x - polyline[i - 1].x, sy = polyline[i].y - polyline[i - 1].y
+            // 長さ0の区間は作らないので、区間の長さで割ってよい
+            if (sx * rx + sy * ry) / (hypot(sx, sy) * rl) < limit { return distances[i - 1] }
+        }
+        return nil
+    }
+
     private mutating func rebuildPolyline(cutoff: CGFloat) {
         polyline.removeAll(keepingCapacity: true)
         distances.removeAll(keepingCapacity: true)

@@ -21,6 +21,7 @@ final class CursorEngine {
     private var typing = TypingWatch(now: ProcessInfo.processInfo.systemUptime)
     private var otherHide = OtherHideWatch(now: ProcessInfo.processInfo.systemUptime)
     private var lastMouse: CGPoint?
+    private var lastPressed = false
     private var pointerScale: CGFloat = 1
     private var lastColorCheck: TimeInterval = 0
 
@@ -93,15 +94,20 @@ final class CursorEngine {
         figures.forEach { $0.step(to: mouse, dt: 0) }
     }
 
-    // 眠ってよいなら true を返す。矢印・I 字・指はすべて動かし続け、切り替えた瞬間に形が飛ばないようにする
+    // 眠ってよいなら true を返す。矢印・I 字・指はすべて動かし続け、切り替えた瞬間に形が飛ばないようにする。
+    // マウスのボタン（どれでも）を押している間は、クリックの形の変化を描く
     private func frame(dt: CGFloat) -> Bool {
         let mouse = NSEvent.mouseLocation
+        let pressed = NSEvent.pressedMouseButtons != 0
         let figures = self.figures
-        figures.forEach { $0.step(to: mouse, dt: dt) }
+        figures.forEach { $0.step(to: mouse, dt: dt, pressed: pressed) }
         followCursorState(mouse: mouse)
         overlay.render()
-        defer { lastMouse = mouse }
-        return figures.allSatisfy(\.isSettled) && mouse == lastMouse
+        defer {
+            lastMouse = mouse
+            lastPressed = pressed
+        }
+        return figures.allSatisfy(\.isSettled) && mouse == lastMouse && pressed == lastPressed
     }
 
     // カーソルの種類と入力中かどうかで、描くものと本物の出し入れを決める。眠っている間も呼ぶ。

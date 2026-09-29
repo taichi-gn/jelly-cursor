@@ -28,6 +28,11 @@ for f in range(0, count, 2):
         pts = data[key][f][:-1]
         origin = panel_origin(i)
         poly = [to_img(p, origin) for p in pts]
+        # ボタンを押している間は、クリック位置に薄い輪を出す
+        if data[key + "Pressed"][f]:
+            mx, my = to_img(data[key][f][-1], origin)
+            r = 11 * SS
+            d.ellipse([mx - r, my - r, mx + r, my + r], outline=(150, 150, 170, 255), width=int(1.5 * SS))
         # 影
         shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
         sd = ImageDraw.Draw(shadow)

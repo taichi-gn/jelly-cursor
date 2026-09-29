@@ -26,6 +26,20 @@ import Testing
         }
     }
 
+    // クリックは止まっている間だけ、往きと帰りに1回ずつ。押している間にマウスは動かない
+    @Test func clicksWhileStill() {
+        var presses = 0, wasPressed = false
+        for i in 0..<Int(PreviewScript.period * 120) {
+            let t = Double(i) / 120
+            let pressed = PreviewScript.isPressed(at: t)
+            if pressed && !wasPressed { presses += 1 }
+            if pressed { #expect(PreviewScript.position(at: t) == PreviewScript.position(at: t + 1.0 / 120)) }
+            wasPressed = pressed
+        }
+        #expect(presses == 2)
+        #expect(PreviewScript.isPressed(at: 1.4) == PreviewScript.isPressed(at: 1.4 + PreviewScript.period))
+    }
+
     // 動いたあとに止まる時間がある（戻る揺れを見せる）
     @Test func holdsStill() {
         let a = PreviewScript.position(at: 1.0), b = PreviewScript.position(at: 2.1)

@@ -55,6 +55,16 @@ import Testing
         #expect(!values.cursorKinds.arrow && values.cursorKinds.iBeam && values.cursorKinds.pointingHand)
         #expect(values.shortcut == nil)
         #expect(values.pauseWhenReduceMotion && values.pauseOnLowPower && !values.pauseInFullScreen)
+        // 「クリックで弾む」が無かった版の設定は、オンとして読む
+        #expect(values.clickBounce)
+    }
+
+    @Test func clickBounceReachesMotionParameters() {
+        var values = SettingsValues()
+        #expect(values.motionParameters.clickDepth > 0)
+        values.clickBounce = false
+        #expect(values.motionParameters.clickDepth == 0)
+        #expect(values.motionParameters != SettingsValues().motionParameters)
     }
 
     @Test func resetRestoresDefaults() {

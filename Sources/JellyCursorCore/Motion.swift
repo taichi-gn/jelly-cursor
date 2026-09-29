@@ -74,14 +74,20 @@ package struct MotionParameters: Equatable, Sendable {
     package let returnSwingDampingRatio: CGFloat
     package let iBeamDampingRatio: CGFloat
     package let handDampingRatio: CGFloat
+    // クリックでつぶれる割合（0 ならつぶれない）と、離したときの戻りの減衰
+    package let clickDepth: CGFloat
+    package let clickReleaseDampingRatio: CGFloat
 
-    package init(_ style: MotionStyle) {
+    // clickBounce は設定の「クリックで弾む」。つぶれる深さは「伸び」、離したときの弾みは「弾み」に合わせる
+    package init(_ style: MotionStyle, clickBounce: Bool = true) {
         stretch = CGFloat(style.stretch)
         let wobble = CGFloat(style.wobble)
         turnDampingRatio = Self.dampingRatio(Tuning.Turn.dampingRatio, wobble: wobble)
         returnSwingDampingRatio = Self.dampingRatio(Tuning.Turn.returnSwingDampingRatio, wobble: wobble)
         iBeamDampingRatio = Self.dampingRatio(Tuning.IBeam.dampingRatio, wobble: wobble)
         handDampingRatio = Self.dampingRatio(Tuning.Hand.dampingRatio, wobble: wobble)
+        clickDepth = clickBounce ? min(Tuning.Click.depth * stretch, Tuning.Click.maxSquash) : 0
+        clickReleaseDampingRatio = Self.dampingRatio(Tuning.Click.releaseDampingRatio, wobble: wobble)
     }
 
     // 弾みから減衰の度合いを決める。0 で 1（行き過ぎない）、1 で標準の値、2 で標準の半分（よく弾む）

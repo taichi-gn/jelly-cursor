@@ -4,7 +4,7 @@ import CoreGraphics
 #endif
 
 // 設定画面のプレビューで動かすマウスの道筋。period 秒ごとに繰り返す。
-// 弧を描いて右上へ動かして止め（戻る揺れを見せる）、別の弧で左下へ戻して、また止める
+// 弧を描いて右上へ動かして止め（戻る揺れを見せる）、クリックし、別の弧で左下へ戻して、また止めてクリックする
 package enum PreviewScript {
     package static let period: Double = 4.4
 
@@ -15,6 +15,15 @@ package enum PreviewScript {
     // 右上へ動き始める時刻と、左下へ戻り始める時刻
     private static let outbound = 0.0
     private static let inbound = period / 2
+
+    // 止まって向きが戻ったあと、それぞれ1回クリックする（押す時刻と離す時刻）
+    private static let clicks: [ClosedRange<Double>] = [1.35...1.5, 3.55...3.7]
+
+    // その時刻にボタンを押しているか
+    package static func isPressed(at time: Double) -> Bool {
+        let t = time.truncatingRemainder(dividingBy: period) + (time < 0 ? period : 0)
+        return clicks.contains { $0.contains(t) }
+    }
 
     // 0〜1 の四角の中の位置（左下原点）。描く側で枠の大きさに合わせる
     package static func position(at time: Double) -> CGPoint {

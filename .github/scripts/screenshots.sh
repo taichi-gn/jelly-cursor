@@ -3,7 +3,7 @@
 # - はじめての起動の案内、設定画面の各タブ、メニューバーのメニュー、Dock のアイコン
 # - 円を描いて動かしている間と、止めた直後のカーソル
 # - 本物のカーソルの出し入れ、ショートカット、⌘W で閉じたあとの前面、止まっている間と動かしている間の CPU、
-#   動きのプレビュー、Dock のアイコン、残る記録
+#   動きのプレビュー、Dock のアイコン、残る記録、クリックで弾むこと、設定のタブのフォーカスの枠
 # キー入力やクリックを送る許可が無い Mac では、それを使う確認だけ飛ばす
 set -euo pipefail
 OUT="$PWD/screenshots"
@@ -34,7 +34,7 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 70 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/settings-about.jpg "$TOOLS"/focus-motion.jpg "$TOOLS"/focus-general.jpg "$TOOLS"/focus-cursors.jpg "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png; do
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/focus-motion.jpg "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
@@ -256,6 +256,32 @@ start=$(cpu_seconds "$pid")
 moving=$(awk -v a="$start" -v b="$(cpu_seconds "$pid")" 'BEGIN { printf "%.1f", (b - a) / 5 * 100 }')
 note "動かしている間の CPU: ${moving}%"
 "$TOOLS/diagnose" JellyCursor
+# クリックで弾むこと。押している間は矢印がクリック位置へ向けてつぶれて短くなり、離して落ち着くと元の大きさに戻る。
+# Finder の窓より下の黒い机の上で押し、矢印の白い縁を囲む四角の大きさ（対角線）を比べる
+cx=600; cy=600
+region="$((cx - 8)),$((cy - 8)),48,48"
+if "$TOOLS/click" "$cx" "$cy"; then
+    sleep 1.5
+    screencapture -x -R"$region" "$OUT/click-rest.png"
+    "$TOOLS/click" "$cx" "$cy" 1.2 &
+    clicker=$!
+    sleep 0.6
+    screencapture -x -R"$region" "$OUT/click-pressed.png"
+    wait "$clicker"
+    sleep 1.5
+    screencapture -x -R"$region" "$OUT/click-released.png"
+    diagonal() {
+        "$TOOLS/image-stats" "$1" | sed -E 's/.*light-box=([0-9]+)x([0-9]+).*/\1 \2/' | awk '{ printf "%.1f", sqrt($1 * $1 + $2 * $2) }'
+    }
+    rest=$(diagonal "$OUT/click-rest.png")
+    pressed=$(diagonal "$OUT/click-pressed.png")
+    released=$(diagonal "$OUT/click-released.png")
+    note "クリック: 押す前 ${rest}px / 押している間 ${pressed}px / 離したあと ${released}px（矢印を囲む四角の対角線）"
+    awk -v p="$pressed" -v r="$rest" 'BEGIN { exit !(r > 5 && p < r * 0.95) }' || fail "押しても矢印がつぶれていない"
+    awk -v a="$released" -v r="$rest" 'BEGIN { exit !(a - r < 1.5 && r - a < 1.5) }' || fail "離したあと元の大きさに戻っていない"
+else
+    note "クリックを送る許可が無いので、クリックの確認は飛ばした"
+fi
 quit
 # 止まっている間に何かが回り続けていないこと（仮想マシンの揺れを見込んで、ゆるく確かめる）
 awk -v v="$idle" 'BEGIN { exit !(v < 10) }' || fail "止まっている間の CPU が多すぎる: ${idle}%"

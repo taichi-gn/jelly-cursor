@@ -48,6 +48,14 @@ struct Heading {
             * Tuning.Turn.armLength
     }
 
+    // 胴体を先端のまわりで回し終えたあと、その向きと回る速さから続ける（向きが飛ばないように）
+    mutating func align(angle: CGFloat, velocity: CGFloat) {
+        self.angle = wrapAngle(angle)
+        targetAngle = self.angle
+        angularVel = velocity
+        returnPhase = .none
+    }
+
     mutating func turn(from last: CGPoint, to mouse: CGPoint, dt: CGFloat) {
         let k = 1 - exp(-Tuning.Turn.velocitySmoothing * dt)
         smoothedVel.dx += ((mouse.x - last.x) / dt - smoothedVel.dx) * k

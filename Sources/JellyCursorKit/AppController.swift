@@ -33,7 +33,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         state.canHideCursor = RealCursor.allowBackgroundControl()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "開発版"
         AppLog.notice("起動 \(version) セーフモード=\(state.safeMode) 本物を隠せる=\(state.canHideCursor)")
-        engine = CursorEngine(canHideCursor: state.canHideCursor, motion: MotionParameters(settings.values.motion),
+        engine = CursorEngine(canHideCursor: state.canHideCursor, motion: settings.values.motionParameters,
                               cursorKinds: settings.values.cursorKinds)
         setUpSignalHandlers()
         NSApp.mainMenu = makeMainMenu()
@@ -130,7 +130,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
 
     private func settingsChanged(from old: SettingsValues) {
         let new = settings.values
-        if new.motion != old.motion { engine?.apply(motion: MotionParameters(new.motion)) }
+        if new.motionParameters != old.motionParameters { engine?.apply(motion: new.motionParameters) }
         if new.cursorKinds != old.cursorKinds { engine?.apply(cursorKinds: new.cursorKinds) }
         if new.shortcut != old.shortcut { registerShortcut() }
         if new.showsMenuBarIcon != old.showsMenuBarIcon {

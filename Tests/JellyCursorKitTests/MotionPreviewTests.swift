@@ -40,7 +40,7 @@ import Testing
 
     @Test func changingTheStyleKeepsDrawing() {
         let view = makeView()
-        view.style = MotionStyle(stretch: 2, wobble: 0)
+        view.motion = MotionParameters(MotionStyle(stretch: 2, wobble: 0), clickBounce: false)
         #expect(view.figureBounds.allSatisfy { !$0.isNull })
     }
 }

@@ -2,26 +2,35 @@ import AppKit
 import JellyCursorCore
 
 // マウスがある画面の書き換えに合わせて onFrame を呼ぶ。onFrame が true を返したら浅く眠る。
-// 眠っている間は表示リンクを止め、タイマーでマウス位置だけを見て、動いたらすぐ起きる。
+// 眠っている間は表示リンクを止め、タイマーでマウスの位置とボタンだけを見て、変わったらすぐ起きる。
 // 表示リンクは何もしなくても1回85µsほどかかり、タイマーは30µsほどで済む。
 // マウス移動のグローバル監視は、前面のアプリがマウス移動を求めていないと届かないので、起こす用途には使えない
 @MainActor
 final class FrameClock {
+    // 眠ったときのマウスの位置と、ボタンを押しているか。どちらかが変わったら起きる
+    private struct Input: Equatable {
+        let mouse: CGPoint
+        let pressed: Bool
+    }
+
     private let onFrame: (CGFloat) -> Bool
     private let onIdle: () -> Void
     private let mouseLocation: () -> CGPoint
+    private let isPressed: () -> Bool
     private var link: CADisplayLink?
     private var linkScreen: NSScreen?
     private var idleTimer: Timer?
     // 表示リンクの時刻と同じ時計（CACurrentMediaTime）で、最後に動かした・見た時刻
     private var lastTimestamp: CFTimeInterval?
-    private var sleepingAt: CGPoint?
+    private var sleepingAt: Input?
 
     init(onFrame: @escaping (CGFloat) -> Bool, onIdle: @escaping () -> Void,
-         mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation }) {
+         mouseLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation },
+         isPressed: @escaping () -> Bool = { NSEvent.pressedMouseButtons != 0 }) {
         self.onFrame = onFrame
         self.onIdle = onIdle
         self.mouseLocation = mouseLocation
+        self.isPressed = isPressed
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -58,7 +67,7 @@ final class FrameClock {
         let now = CACurrentMediaTime()
         let dt = lastTimestamp.map { step(since: $0, now: now) } ?? Tuning.Render.idlePollInterval
         lastTimestamp = now
-        guard mouseLocation() != sleepingAt else {
+        guard input() != sleepingAt else {
             onIdle()
             return
         }
@@ -70,10 +79,14 @@ final class FrameClock {
     }
 
     private func advance(dt: CFTimeInterval) {
-        let mouse = mouseLocation()
+        let current = input()
         if onFrame(CGFloat(dt)) {
-            sleep(at: mouse)
+            sleep(at: current)
         }
+    }
+
+    private func input() -> Input {
+        Input(mouse: mouseLocation(), pressed: isPressed())
     }
 
     // 起きた直後の表示リンクの時刻は、最後にタイマーで見た時刻より前のことがあるので、負にしない
@@ -86,8 +99,8 @@ final class FrameClock {
         if link != nil { attach(to: screenUnderMouse()) }
     }
 
-    private func sleep(at mouse: CGPoint) {
-        sleepingAt = mouse
+    private func sleep(at input: Input) {
+        sleepingAt = input
         link?.isPaused = true
         idleTimer?.invalidate()
         let timer = Timer(timeInterval: Tuning.Render.idlePollInterval, repeats: true) { [weak self] _ in
