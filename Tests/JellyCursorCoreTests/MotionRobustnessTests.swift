@@ -203,6 +203,50 @@ import Testing
         }
     }
 
+    // 止まった矢印の胴体と逆向きへ動き出しても、胴体が先端へ縮んで小さな塊にならない。少しだけ動かしたとき・止まった矢印から
+    // 速く動き出したとき・行き過ぎて一瞬止めてから戻したとき・ゆっくり折り返したときを見る
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func movingAgainstTheBodyDoesNotCollapse(rate: CGFloat) {
+        let rest = ArrowShape(scale: 1).length
+        func shortestReach(_ position: (CGFloat) -> CGPoint, seconds: CGFloat) -> CGFloat {
+            let arrow = Jelly(scale: 1)
+            arrow.step(to: position(0), dt: 0)
+            var shortest = CGFloat.infinity
+            for i in 1...Int((seconds * rate).rounded()) {
+                let mouse = position(CGFloat(i) / rate)
+                arrow.step(to: mouse, dt: 1 / rate)
+                shortest = min(shortest, arrow.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0)
+            }
+            return shortest
+        }
+        // 胴体は右下（止まったときの向き）。そちらや真下・右へ動かす
+        for degrees in [-67, -45, -90, 0] as [CGFloat] {
+            let direction = CGVector(dx: cos(degrees * .pi / 180), dy: sin(degrees * .pi / 180))
+            for speed in [150, 400, 1200, 3000] as [CGFloat] {
+                // 25pt だけ動かして止める
+                let nudge = shortestReach({ t in
+                    let d = min(speed * t, 25)
+                    return CGPoint(x: 300 + direction.dx * d, y: 300 + direction.dy * d)
+                }, seconds: 0.8)
+                // そのまま動き続ける
+                let start = shortestReach({ t in CGPoint(x: 300 + direction.dx * speed * t, y: 300 + direction.dy * speed * t) }, seconds: 0.5)
+                #expect(nudge > 0.7 * rest, "\(degrees)° \(speed)pt/秒で少し動かした: \(nudge)")
+                #expect(start > 0.7 * rest, "\(degrees)° \(speed)pt/秒で動き出した: \(start)")
+            }
+        }
+        for pause in [0.08, 0.12, 0.18] as [CGFloat] {
+            let reach = shortestReach({ t in
+                if t < 0.3 { return CGPoint(x: 300 + 800 * t, y: 300) }
+                return CGPoint(x: 540 - 300 * max(t - 0.3 - pause, 0), y: 300)
+            }, seconds: 1.2)
+            #expect(reach > 0.7 * rest, "行き過ぎて \(pause) 秒止めてから戻した: \(reach)")
+        }
+        for speed in [60, 100, 140, 200] as [CGFloat] {
+            let reach = shortestReach({ t in CGPoint(x: 300 + (t < 0.6 ? speed * t : speed * (1.2 - t)), y: 300 + 18 * t) }, seconds: 1.6)
+            #expect(reach > 0.7 * rest, "\(speed)pt/秒でゆっくり折り返した: \(reach)")
+        }
+    }
+
     // どの向きに、どの速さで振っても、同じ向きへ回り続けない（止まったときの矢印の向きに沿って振ったときや、
     // 速く振って折り返しの途中でまた折り返したときも）。手ぶれほどの小さなゆれを混ぜる
     @Test(arguments: [60, 120, 240] as [CGFloat])

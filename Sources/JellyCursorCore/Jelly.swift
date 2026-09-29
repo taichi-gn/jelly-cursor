@@ -20,6 +20,10 @@ package final class Jelly: CursorFigure {
     // 前のフレームで描いた胴体の向き（先端から胴体の中ほどへ）。回し始めの向きと、クリックでつぶす向きにする
     private var bodyBack = CGVector(dx: 0, dy: -1)
     private var squish: ClickSquish
+    // 道に沿わせてよい度合い。道の向きがまっすぐな胴体の向きと逆のうちは下げ、向きが回ってそろうにつれて上げる
+    private var pathGate: CGFloat = 1
+    // 道に沿わせたい状態が続いている秒数
+    private var engagedTime: CGFloat = 0
     // 折り返しで胴体を回した向きの合計（ラジアン。+ で左回り）。左右に振り続けたときに、同じ向きへ回り続けず
     // 巻き戻すよう、回す側を選ぶのに使う。しばらく折り返さなければ忘れる
     private var pivotTurns: CGFloat = 0
@@ -60,8 +64,10 @@ package final class Jelly: CursorFigure {
         let fold = heading.commitment > 0 ? trail.fold() : nil
         updatePivot(mouse: mouse, fold: fold, moved: moved, dt: dt)
 
-        // 回している間は伸びを戻し、短くしてから回す。回し終えたら、道に沿わせるのに合わせて少しずつ伸ばす（一度に伸ばすと跳ねて見える）
-        let stretch = pivot == nil ? min(trail.length, Tuning.Trail.maxStretch) * pathFollow : 0
+        updatePathGate(mouse: mouse, dt: dt)
+        // 回している間は伸びを戻し、短くしてから回す。回し終えたら、道に沿わせるのに合わせて少しずつ伸ばす（一度に伸ばすと跳ねて見える）。
+        // 道の向きが胴体の向きと逆で、まだ道に沿わせていないうちは伸ばさない（まっすぐなまま前へ伸びないように）
+        let stretch = pivot == nil ? min(trail.length, Tuning.Trail.maxStretch) * pathFollow * pathGate : 0
         var target = shape.length + stretch * stretchScale * heading.commitment
         // 道が折り返したら、胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）。
         // 今の長さが折り返しに届いていなくても、伸びる途中で越えないよう、いつも抑える
@@ -177,11 +183,45 @@ package final class Jelly: CursorFigure {
         return tieSide
     }
 
+    // まっすぐにしたときの胴体の向き（先端から胴体へ）
+    private var restBack: CGVector {
+        pivot.map { CGVector(dx: cos($0.angle), dy: sin($0.angle)) } ?? heading.axis.negated
+    }
+
+    // 道に沿わせたい度合い。道が胴体より短いうち・動き始めてあまり動いていないうち・回している間は、まっすぐな胴体に寄せる
+    private var pathEngagement: CGFloat {
+        min(trail.length / shape.length, 1) * heading.commitment * pathFollow
+    }
+
+    // 胴体は、まっすぐな形と道に沿った形を位置で混ぜて作る。逆を向いた2つの間で沿わせる度合いを増やすと、途中で胴体が
+    // 先端へ縮んで小さな塊に見える（止まった矢印から右下へ動き出したとき・少し動かしたとき・行き過ぎて戻したときなど）。
+    // そこで、道の向きがまっすぐな胴体の向きと逆のうちは道に沿わせず、向きが回ってそろうにつれて沿わせる。
+    // すでに道に沿っているときは、向きが遅れても下げない。道に沿わせたい状態が続いているのに向きがそろわないとき
+    // （速く円を描き始めて、向きが回る道に追いつけないときなど）は、少し待ってから沿わせる
+    private func updatePathGate(mouse: CGPoint, dt: CGFloat) {
+        guard dt > 0 else { return }
+        var target: CGFloat = 1
+        if trail.length > 0, let path = (trail.point(at: min(trail.length, shape.length / 2)) - mouse).normalized {
+            let back = restBack
+            let cosine = path.dx * back.dx + path.dy * back.dy
+            let t = min(max((cosine - Tuning.Trail.opposingCosine) / (Tuning.Trail.opposedCosine - Tuning.Trail.opposingCosine), 0), 1)
+            target = 1 - t * t * (3 - 2 * t)
+        }
+        if pathEngagement >= Tuning.Trail.gateHold {
+            engagedTime += dt
+            let forced = min(max((engagedTime - Tuning.Trail.gateForceDelay) / Tuning.Trail.gateForceTime, 0), 1)
+            target = max(target, pathGate, forced)
+        } else {
+            engagedTime = 0
+        }
+        let tau = target < pathGate ? Tuning.Trail.gateCloseTime : Tuning.Trail.gateOpenTime
+        pathGate += (target - pathGate) * (1 - exp(-dt / tau))
+        if pathGate > 0.999 { pathGate = 1 }
+    }
+
     // 矢印の軸を道筋に沿って曲げ、各頂点をその地点の向きに対して横へずらす
     private func layOut(at mouse: CGPoint) {
-        let restBack = pivot.map { CGVector(dx: cos($0.angle), dy: sin($0.angle)) } ?? heading.axis.negated
-        let spine = Spine(mouse: mouse, trail: trail, restBack: restBack,
-                          blend: min(trail.length / shape.length, 1) * heading.commitment * pathFollow)
+        let spine = Spine(mouse: mouse, trail: trail, restBack: restBack, blend: pathEngagement * pathGate)
         bodyBack = (spine.point(at: shape.length / 2) - mouse).normalized ?? restBack
         let stretch = length / shape.length
         let width = pow(1 / stretch, Tuning.Trail.thinning)

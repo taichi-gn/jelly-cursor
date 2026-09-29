@@ -21,6 +21,18 @@ package enum Tuning {
         static let thinning: CGFloat = 0.5
         // 道の向きを測るときに前後何pxの区間を使うか。短いと手ぶれで向きがばたつく
         static let tangentWindow: CGFloat = 3
+        // 道の向きとまっすぐな胴体の向きの cos が opposedCosine より小さい（100度より開いている）と、道に沿わせない。
+        // opposingCosine（70度）までは沿わせる
+        static let opposingCosine: CGFloat = 0.34
+        static let opposedCosine: CGFloat = -0.17
+        // 道に沿わせたい度合いがこれ以上のとき（すでに道に沿っているとき）は、向きがずれても沿わせる度合いを下げない
+        static let gateHold: CGFloat = 0.9
+        // 沿わせてよい度合いを下げる速さと上げる速さ（秒）。速く動かし始めたときに間に合うよう、下げるのは急ぐ
+        static let gateCloseTime: CGFloat = 0.003
+        static let gateOpenTime: CGFloat = 0.015
+        // 道に沿わせたい状態がこの秒数続いても向きがそろわなければ、さらに gateForceTime 秒かけて沿わせる
+        static let gateForceDelay: CGFloat = 0.15
+        static let gateForceTime: CGFloat = 0.15
     }
 
     // 進行方向へ先端を向ける。手ぶれで回らないよう、一定の速さを超えたときだけ向きを更新する
