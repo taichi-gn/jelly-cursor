@@ -120,6 +120,7 @@ private struct GeneralPane: View {
         }
         .confirmationDialog("すべての設定を初期状態に戻しますか？", isPresented: $confirmsReset) {
             Button("初期状態に戻す", role: .destructive) { settings.reset() }
+            Button("キャンセル", role: .cancel) {}
         } message: {
             Text("ログイン時に起動する設定は変わりません。")
         }

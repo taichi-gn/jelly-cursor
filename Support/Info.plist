@@ -3,6 +3,8 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key><string>JellyCursor</string>
+  <key>CFBundleDevelopmentRegion</key><string>ja</string>
+  <key>CFBundleLocalizations</key><array><string>ja</string></array>
   <key>CFBundleDisplayName</key><string>JellyCursor</string>
   <key>CFBundleIdentifier</key><string>local.jellycursor</string>
   <key>CFBundleExecutable</key><string>JellyCursor</string>

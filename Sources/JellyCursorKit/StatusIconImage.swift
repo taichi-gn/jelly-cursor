@@ -8,8 +8,10 @@ import JellyCursorCore
 enum StatusIconImage {
     private static var cache: [StatusIcon: NSImage] = [:]
     private static var layout: Layout?
-    // 印の直径（矢印の高さに対する割合）と、印のまわりをくり抜く幅（pt）
-    private static let badgeRatio: CGFloat = 0.62
+    // 印の直径（矢印の高さに対する割合）と、印のまわりをくり抜く幅（pt）。
+    // 印は矢印の右下に、大半を矢印の外へ出して置く（矢印の形が隠れないように）
+    private static let badgeRatio: CGFloat = 0.5
+    private static let badgeInset: CGFloat = 0.35
     private static let badgeGap: CGFloat = 1
 
     // すべての状態の絵を重ねたときの大きさと、それぞれの記号と印を置く範囲（左上から）
@@ -63,7 +65,7 @@ enum StatusIconImage {
             let rect = CGRect(x: -tip.x, y: -tip.y, width: image.size.width, height: image.size.height)
             glyphRects[name] = rect
             let d = (rect.height * badgeRatio).rounded()
-            badgeRects[name] = CGRect(x: rect.maxX - d * 0.8, y: rect.maxY - d, width: d, height: d)
+            badgeRects[name] = CGRect(x: rect.maxX - d * badgeInset, y: rect.maxY - d, width: d, height: d)
         }
         for badge in StatusIcon.allCases.compactMap(\.badge) {
             guard NSImage(systemSymbolName: badge.symbolName, accessibilityDescription: nil) != nil else { return nil }
