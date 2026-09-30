@@ -22,7 +22,6 @@ package final class AppController: NSObject, NSApplicationDelegate {
     private var actions: AppActions {
         AppActions(
             setEnabled: { [weak self] in self?.setEnabled($0) },
-            restoreRealCursor: { [weak self] in self?.restoreRealCursor() },
             suspendShortcut: { [weak self] in self?.suspendShortcut($0) })
     }
 
@@ -41,13 +40,11 @@ package final class AppController: NSObject, NSApplicationDelegate {
         // 自分でも描いて渡す（Dock のぶんは、設定画面を開いてふつうのアプリになったときに渡す）
         NSApp.applicationIconImage = AppIconImage.make()
         statusMenu = StatusMenu(
-            settings: settings, state: state, frontApp: { [weak self] in self?.system.lastOtherApp },
+            settings: settings, state: state,
             actions: StatusMenu.Actions(
                 toggleEnabled: { [weak self] in self?.toggleEnabled() },
-                toggleExclusion: { [weak self] in self?.toggleExclusion(of: $0) },
                 applyPreset: { [weak self] in self?.settings.values.motion = $0.style },
-                openSettings: { [weak self] in self?.openSettings() },
-                restoreRealCursor: { [weak self] in self?.restoreRealCursor() }))
+                openSettings: { [weak self] in self?.openSettings() }))
         statusMenu?.isVisible = settings.values.showsMenuBarIcon || state.safeMode
 
         settings.onChange = { [weak self] old in self?.settingsChanged(from: old) }
@@ -139,27 +136,18 @@ package final class AppController: NSObject, NSApplicationDelegate {
         update()
     }
 
-    // オンにしたらセーフモードも終える
+    // オンにしたらセーフモードも終える。オフにしたら、本物のカーソルが見えるところまで確かに戻す
+    // （隠した回数の数え違いなどで見えなくなっていても、オフにすれば戻るように）
     private func setEnabled(_ enabled: Bool) {
         if enabled { state.safeMode = false }
         settings.values.isEnabled = enabled
         statusMenu?.isVisible = settings.values.showsMenuBarIcon || state.safeMode
         update()
+        if !enabled { RealCursor.forceShow() }
     }
 
     private func toggleEnabled() {
         setEnabled(!state.isEnabled(in: settings))
-    }
-
-    private func toggleExclusion(of app: AppIdentity) {
-        let excluded = settings.values.isExcluded(bundleID: app.bundleID)
-        settings.values.setExcluded(ExcludedApp(bundleID: app.bundleID, name: app.name), !excluded)
-    }
-
-    // 本物のカーソルが見えなくなったときの逃げ道。オフにして、隠した回数の数え違いがあっても見えるまで戻す
-    private func restoreRealCursor() {
-        setEnabled(false)
-        RealCursor.forceShow()
     }
 
     private func openSettings(tab: SettingsTab? = nil) {

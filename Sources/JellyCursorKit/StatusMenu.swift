@@ -6,23 +6,19 @@ import JellyCursorCore
 final class StatusMenu: NSObject, NSMenuDelegate {
     struct Actions {
         var toggleEnabled: () -> Void
-        var toggleExclusion: (AppIdentity) -> Void
         var applyPreset: (MotionPreset) -> Void
         var openSettings: () -> Void
-        var restoreRealCursor: () -> Void
     }
 
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private let settings: AppSettings
     private let state: AppState
-    private let frontApp: () -> AppIdentity?
     private let actions: Actions
 
-    init(settings: AppSettings, state: AppState, frontApp: @escaping () -> AppIdentity?, actions: Actions) {
+    init(settings: AppSettings, state: AppState, actions: Actions) {
         self.settings = settings
         self.state = state
-        self.frontApp = frontApp
         self.actions = actions
         super.init()
         menu.delegate = self
@@ -70,11 +66,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         if let line = state.activity.statusLine {
             addInfo(line, symbol: "pause.circle")
         }
-        if let app = frontApp() {
-            let exclusion = addItem("「\(app.name)」では無効", action: #selector(toggleExclusion(_:)), symbol: "nosign")
-            exclusion.state = values.isExcluded(bundleID: app.bundleID) ? .on : .off
-            exclusion.representedObject = FrontApp(app)
-        }
 
         let presets = NSMenu()
         for preset in MotionPreset.allCases {
@@ -103,7 +94,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             addInfo("\(shortcut.displayString) はほかのアプリが使っているため登録できませんでした",
                     symbol: "exclamationmark.triangle")
         }
-        addItem("本物のカーソルに戻す", action: #selector(restoreRealCursor), symbol: "arrow.uturn.backward")
         let settingsItem = addItem("設定…", action: #selector(openSettings), symbol: "gearshape")
         settingsItem.keyEquivalent = ","
         menu.addItem(.separator())
@@ -140,11 +130,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         actions.toggleEnabled()
     }
 
-    @objc private func toggleExclusion(_ sender: NSMenuItem) {
-        guard let app = sender.representedObject as? FrontApp else { return }
-        actions.toggleExclusion(app.identity)
-    }
-
     @objc private func applyPreset(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let preset = MotionPreset(rawValue: raw) else { return }
         actions.applyPreset(preset)
@@ -152,19 +137,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     @objc private func openSettings() {
         actions.openSettings()
-    }
-
-    @objc private func restoreRealCursor() {
-        actions.restoreRealCursor()
-    }
-}
-
-// メニューの項目に持たせる前面のアプリ（representedObject は Objective-C のオブジェクトにする）
-private final class FrontApp: NSObject {
-    let identity: AppIdentity
-
-    init(_ identity: AppIdentity) {
-        self.identity = identity
     }
 }
 

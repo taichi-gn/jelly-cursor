@@ -186,7 +186,6 @@ fi
 # メニューバーのメニューを開いて撮る。macOS 26 ではメニューバーのアイコンが窓の一覧に出ず、
 # クリックする場所が分からないので、起動時の指定でアプリに開かせる。
 # README に使うので、「視差効果を減らす」で止めずに、動いているときのメニューにする。
-# 「〇〇では無効」に CI の Mac の都合のアプリが出ないよう、Finder を前に出してから開く
 write_settings '{"pauseWhenReduceMotion": false, "pauseOnLowPower": false}'
 open -a Finder
 sleep 1

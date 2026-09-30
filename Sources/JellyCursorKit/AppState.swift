@@ -24,7 +24,6 @@ final class AppState {
 @MainActor
 struct AppActions {
     var setEnabled: (Bool) -> Void
-    var restoreRealCursor: () -> Void
     // ショートカットを記録している間は、今のショートカットを外しておく
     var suspendShortcut: (Bool) -> Void
 }
