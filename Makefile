@@ -27,12 +27,14 @@ app: build
 test:
 	swift test $(SWIFT_FLAGS)
 
-# ログイン時に起動する設定は、アプリの場所を覚えるので、決まった場所に置いてから使う。入れたら起動し直す
+# ログイン時に起動する設定は、アプリの場所を覚えるので、決まった場所に置いてから使う。入れたら起動し直す。
+# 作ったその場のアプリは消す（同じアプリが2つあると、Spotlight などに2つ出て、どちらを開いたか分からなくなる）
 install: app
 	mkdir -p "$(INSTALL_DIR)"
 	-pkill -x JellyCursor
 	rm -rf "$(INSTALL_DIR)/$(APP)"
 	ditto "$(APP)" "$(INSTALL_DIR)/$(APP)"
+	rm -rf "$(APP)"
 	@echo "installed $(INSTALL_DIR)/$(APP)"
 	open "$(INSTALL_DIR)/$(APP)"
 
