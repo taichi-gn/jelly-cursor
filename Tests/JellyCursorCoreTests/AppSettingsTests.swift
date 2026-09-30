@@ -75,6 +75,8 @@ import Testing
         let values = AppSettings(defaults: defaults).values
         #expect(!values.isEnabled)
         #expect(values.motion == MotionStyle(stretch: 0.5, wobble: 1))
+        // カスタムを覚えていなかった版の設定でも、プリセットと違う値ならカスタムとして覚える
+        #expect(values.customMotion == values.motion)
         #expect(!values.cursorKinds.arrow && values.cursorKinds.iBeam && values.cursorKinds.pointingHand)
         #expect(values.shortcut == nil)
         #expect(!values.pauseWhenReduceMotion && !values.pauseOnLowPower && !values.pauseInFullScreen)

@@ -74,7 +74,9 @@ package struct SettingsValues: Codable, Equatable, Sendable {
         let d = SettingsValues()
         isEnabled = (try? c.decode(Bool.self, forKey: .isEnabled)) ?? d.isEnabled
         motion = (try? c.decode(MotionStyle.self, forKey: .motion)) ?? d.motion
-        customMotion = try? c.decode(MotionStyle.self, forKey: .customMotion)
+        // カスタムを覚えていなかった版で、プリセットと違う値にしていたら、その値をカスタムとして覚える
+        customMotion = (try? c.decode(MotionStyle.self, forKey: .customMotion))
+            ?? (MotionPreset(matching: motion) == nil ? motion : nil)
         clickBounce = (try? c.decode(Bool.self, forKey: .clickBounce)) ?? d.clickBounce
         cursorKinds = (try? c.decode(CursorKinds.self, forKey: .cursorKinds)) ?? d.cursorKinds
         pauseWhenReduceMotion = (try? c.decode(Bool.self, forKey: .pauseWhenReduceMotion)) ?? d.pauseWhenReduceMotion

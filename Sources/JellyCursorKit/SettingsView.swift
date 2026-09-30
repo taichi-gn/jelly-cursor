@@ -129,6 +129,8 @@ private struct GeneralPane: View {
 // 動き: プリセット・強さ・プレビュー
 private struct MotionPane: View {
     @Bindable var settings: AppSettings
+    // 選べないカスタムが押されたときに、切り替えを作り直して今の選択に戻す
+    @State private var presetRedraw = 0
 
     var body: some View {
         Form {
@@ -140,8 +142,10 @@ private struct MotionPane: View {
                     set: { preset in
                         if let preset {
                             settings.values.motion = preset.style
-                        } else {
+                        } else if settings.values.customMotion != nil {
                             settings.values.applyCustomMotion()
+                        } else {
+                            presetRedraw += 1
                         }
                     })
                 ) {
@@ -152,6 +156,7 @@ private struct MotionPane: View {
                         .selectionDisabled(settings.values.customMotion == nil)
                 }
                 .pickerStyle(.segmented)
+                .id(presetRedraw)
 
                 StrengthSlider(title: "伸び", value: $settings.values.motion.stretch,
                                low: "なし", high: "大きく",

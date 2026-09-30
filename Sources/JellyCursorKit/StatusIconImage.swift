@@ -29,16 +29,20 @@ enum StatusIconImage {
         let badgeRect = layout.badgeRects[symbol] ?? .zero
         let badge = icon.badge?.symbolName
         let gap = badgeGap
-        // 左上を原点にして描く
-        let image = NSImage(size: layout.size, flipped: true) { _ in
+        // 左上を原点にして描く。描く処理は、絵を描くスレッドで呼ばれることがあるので、主スレッドに縛らない。
+        // 印のまわりのくり抜きが、描く先（メニューバーの背景など）まで消さないよう、透明な層の中で描いてから重ねる
+        let image = NSImage(size: layout.size, flipped: true) { @Sendable _ in
+            let context = NSGraphicsContext.current
+            context?.cgContext.beginTransparencyLayer(auxiliaryInfo: nil)
             NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.draw(in: glyphRect)
             if let badge {
-                let context = NSGraphicsContext.current
                 context?.compositingOperation = .destinationOut
+                NSColor.black.setFill()
                 NSBezierPath(ovalIn: badgeRect.insetBy(dx: -gap, dy: -gap)).fill()
                 context?.compositingOperation = .sourceOver
                 NSImage(systemSymbolName: badge, accessibilityDescription: nil)?.draw(in: badgeRect)
             }
+            context?.cgContext.endTransparencyLayer()
             return true
         }
         image.isTemplate = true
@@ -53,7 +57,9 @@ enum StatusIconImage {
         var badgeRects: [String: CGRect] = [:]
         for name in Set(StatusIcon.allCases.map(\.symbolName)) {
             guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
-            let tip = tip(of: image) ?? CGPoint(x: image.size.width, y: 0)
+            // 半ポイント単位にそろえる（Retina の画素に合わせて、にじまないように）
+            let found = tip(of: image) ?? CGPoint(x: image.size.width, y: 0)
+            let tip = CGPoint(x: (found.x * 2).rounded() / 2, y: (found.y * 2).rounded() / 2)
             let rect = CGRect(x: -tip.x, y: -tip.y, width: image.size.width, height: image.size.height)
             glyphRects[name] = rect
             let d = (rect.height * badgeRatio).rounded()
