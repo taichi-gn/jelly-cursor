@@ -9,6 +9,8 @@ import Testing
         var s = SettingsValues()
         s.setExcluded(ExcludedApp(bundleID: game.bundleID, name: game.name), true)
         s.pauseInFullScreen = true
+        s.pauseWhenReduceMotion = true
+        s.pauseOnLowPower = true
         return s
     }
 
@@ -77,15 +79,18 @@ import Testing
         c.lowPower = true
         c.frontAppFullScreen = true
         #expect(Activity(settings: s, conditions: c, safeMode: false) == .running)
-        // 全画面を止める設定は初期値ではオフ
-        #expect(!SettingsValues().pauseInFullScreen)
+        // Mac の状態で止める設定は、どれも初期値ではオフ（オンにしたら動く）
+        let d = SettingsValues()
+        #expect(!d.pauseWhenReduceMotion && !d.pauseOnLowPower && !d.pauseInFullScreen)
+        #expect(Activity(settings: d, conditions: c, safeMode: false) == .running)
     }
 
     @Test func statusLines() {
         #expect(Activity.running.statusLine == nil)
         #expect(Activity.off.statusLine == nil)
         #expect(Activity.safeMode.statusLine != nil)
-        #expect(Activity.paused(.excludedApp("Game")).statusLine == "一時停止中: 「Game」では無効にしています")
+        #expect(Activity.paused(.excludedApp("Game")).statusLine == "一時停止中（「Game」を使用中）")
+        #expect(Activity.paused(.lowPower).statusLine == "一時停止中（低電力モード）")
     }
 
     @Test func icons() {
@@ -94,7 +99,11 @@ import Testing
         #expect(StatusIcon(activity: .paused(.lowPower), canHideCursor: true) == .paused)
         #expect(StatusIcon(activity: .off, canHideCursor: false) == .off)
         #expect(StatusIcon(activity: .safeMode, canHideCursor: true) == .off)
-        #expect(StatusIcon.paused.isDimmed && !StatusIcon.running.isDimmed)
+        // 薄くするのはオフのときだけ。一時停止中は印を付けて、オフと見分けられるようにする
+        #expect(StatusIcon.off.isDimmed)
+        #expect(!StatusIcon.running.isDimmed && !StatusIcon.paused.isDimmed && !StatusIcon.warning.isDimmed)
+        #expect(StatusIcon.paused.badge == .pause && StatusIcon.warning.badge == .warning)
+        #expect(StatusIcon.off.badge == nil && StatusIcon.running.badge == nil)
         #expect(StatusIcon.off.symbolName != StatusIcon.running.symbolName)
     }
 }
@@ -119,7 +128,7 @@ import Testing
                                  screens: ["1512×982@2.0x", "1920×1080@1.0x"], settings: settings, shortcutFailed: true)
         let lines = report.text.split(separator: "\n").map(String.init)
         #expect(lines[0] == "JellyCursor 0.3 (3)")
-        #expect(lines.contains("状態: 一時停止中: 低電力モードです"))
+        #expect(lines.contains("状態: 一時停止中（低電力モード）"))
         #expect(lines.contains("ポインタの大きさ: 1.50"))
         #expect(lines.contains("画面: 1512×982@2.0x, 1920×1080@1.0x"))
         #expect(lines.contains("ショートカット: ⌃⌥J（登録できない）"))
@@ -129,16 +138,17 @@ import Testing
     @Test func appendsRecentLogLast() {
         let report = Diagnostics(appVersion: "0.3", osVersion: "26.0", activity: .running, canHideCursor: true,
                                  safeMode: false, pointerScale: 1, screens: [], settings: SettingsValues(),
-                                 shortcutFailed: false, recentLog: ["10:00:00 起動 0.3", "10:00:01 状態: 動いています"])
+                                 shortcutFailed: false, recentLog: ["10:00:00 起動 0.3", "10:00:01 状態: オン"])
         let lines = report.text.split(separator: "\n").map(String.init)
         #expect(lines.contains("画面: なし"))
         #expect(lines.contains("ショートカット: なし"))
-        #expect(Array(lines.suffix(3)) == ["最近の記録:", "  10:00:00 起動 0.3", "  10:00:01 状態: 動いています"])
+        #expect(Array(lines.suffix(3)) == ["最近の記録:", "  10:00:00 起動 0.3", "  10:00:01 状態: オン"])
     }
 
     @Test func summaries() {
-        #expect(Activity.running.summary == "動いています")
+        #expect(Activity.running.summary == "オン")
         #expect(Activity.off.summary == "オフ")
-        #expect(Activity.safeMode.summary == Activity.safeMode.statusLine)
+        #expect(Activity.safeMode.summary == "セーフモード")
+        #expect(Activity.paused(.fullScreen).summary == "一時停止中（全画面のアプリを使用中）")
     }
 }

@@ -133,16 +133,23 @@ private struct MotionPane: View {
     var body: some View {
         Form {
             Section {
+                // カスタムはいつも出して、切り替えの位置がずれないようにする。スライダーでプリセットと違う値にすると
+                // カスタムになり、その値を覚えておく。まだカスタムにしたことがなければ選べない
                 Picker("プリセット", selection: Binding(
                     get: { settings.values.preset },
-                    set: { if let preset = $0 { settings.values.motion = preset.style } })
+                    set: { preset in
+                        if let preset {
+                            settings.values.motion = preset.style
+                        } else {
+                            settings.values.applyCustomMotion()
+                        }
+                    })
                 ) {
                     ForEach(MotionPreset.allCases, id: \.self) { preset in
                         Text(preset.title).tag(Optional(preset))
                     }
-                    if settings.values.preset == nil {
-                        Text("カスタム").tag(MotionPreset?.none)
-                    }
+                    Text("カスタム").tag(MotionPreset?.none)
+                        .selectionDisabled(settings.values.customMotion == nil)
                 }
                 .pickerStyle(.segmented)
 
@@ -392,9 +399,9 @@ private struct AboutPane: View {
             }
 
             Section {
-                LabeledContent("今の状態", value: status)
-                LabeledContent("本物のカーソルを隠す",
-                               value: state.canHideCursor ? "できます" : "できません（自前の絵を重ねて描きます）")
+                LabeledContent("状態", value: status)
+                LabeledContent("本物のカーソルの非表示",
+                               value: state.canHideCursor ? "使用可能" : "使用不可（本物のカーソルに重ねて表示）")
             }
 
             Section("困ったとき") {

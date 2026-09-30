@@ -44,7 +44,8 @@ package final class AppController: NSObject, NSApplicationDelegate {
             actions: StatusMenu.Actions(
                 toggleEnabled: { [weak self] in self?.toggleEnabled() },
                 applyPreset: { [weak self] in self?.settings.values.motion = $0.style },
-                openSettings: { [weak self] in self?.openSettings() }))
+                applyCustomMotion: { [weak self] in self?.settings.values.applyCustomMotion() },
+                openSettings: { [weak self] in self?.openSettings(tab: $0) }))
         statusMenu?.isVisible = settings.values.showsMenuBarIcon || state.safeMode
 
         settings.onChange = { [weak self] old in self?.settingsChanged(from: old) }

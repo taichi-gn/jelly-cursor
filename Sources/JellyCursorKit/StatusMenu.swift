@@ -7,7 +7,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     struct Actions {
         var toggleEnabled: () -> Void
         var applyPreset: (MotionPreset) -> Void
-        var openSettings: () -> Void
+        var applyCustomMotion: () -> Void
+        var openSettings: (SettingsTab?) -> Void
     }
 
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -37,12 +38,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         item.button?.performClick(nil)
     }
 
-    // アイコンを今の状態に合わせる。一時停止中は薄く、本物のカーソルを隠せないときは警告の形にする
+    // アイコンを今の状態に合わせる。オフのときは薄く、一時停止中と本物のカーソルを隠せないときは印を付ける
     func update() {
         let icon = StatusIcon(activity: state.activity, canHideCursor: state.canHideCursor)
         guard let button = item.button else { return }
-        if let image = NSImage(systemSymbolName: icon.symbolName, accessibilityDescription: icon.accessibilityDescription) {
-            image.isTemplate = true
+        if let image = StatusIconImage.image(for: icon) {
             button.image = image
             button.title = ""
         } else {
@@ -65,9 +65,17 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
         if let line = state.activity.statusLine {
             addInfo(line, symbol: "pause.circle")
+            // 止めている理由を設定で変えられるときは、その設定を開く項目を添える（状態の行は押せる項目にしない）
+            if case .paused(let reason) = state.activity, let tab = Self.settingsTab(for: reason) {
+                let fix = addItem(tab == .cursors ? "カーソルの設定…" : "自動で止める設定…",
+                                  action: #selector(openPauseSettings(_:)), symbol: "gearshape")
+                fix.representedObject = tab.rawValue
+            }
         }
 
         let presets = NSMenu()
+        // カスタムを押せないときに、押せる表示に戻されないようにする
+        presets.autoenablesItems = false
         for preset in MotionPreset.allCases {
             let presetItem = NSMenuItem(title: preset.title, action: #selector(applyPreset(_:)), keyEquivalent: "")
             presetItem.target = self
@@ -75,12 +83,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             presetItem.state = values.preset == preset ? .on : .off
             presets.addItem(presetItem)
         }
-        if values.preset == nil {
-            let custom = NSMenuItem(title: "カスタム", action: nil, keyEquivalent: "")
-            custom.state = .on
-            custom.isEnabled = false
-            presets.addItem(custom)
-        }
+        // カスタムはいつも出す。まだカスタムにしたことがなければ押せない
+        let custom = NSMenuItem(title: "カスタム", action: #selector(applyCustomMotion), keyEquivalent: "")
+        custom.target = self
+        custom.state = values.preset == nil ? .on : .off
+        custom.isEnabled = values.customMotion != nil
+        presets.addItem(custom)
         let presetsItem = NSMenuItem(title: "動きの強さ", action: nil, keyEquivalent: "")
         presetsItem.submenu = presets
         decorate(presetsItem, symbol: "slider.horizontal.3")
@@ -135,8 +143,26 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         actions.applyPreset(preset)
     }
 
+    @objc private func applyCustomMotion() {
+        actions.applyCustomMotion()
+    }
+
     @objc private func openSettings() {
-        actions.openSettings()
+        actions.openSettings(nil)
+    }
+
+    @objc private func openPauseSettings(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let tab = SettingsTab(rawValue: raw) else { return }
+        actions.openSettings(tab)
+    }
+
+    // 止めている理由を変えられる設定のタブ。ロックやスリープなど、設定では変えられない理由なら nil
+    private static func settingsTab(for reason: PauseReason) -> SettingsTab? {
+        switch reason {
+        case .noCursorKinds: .cursors
+        case .excludedApp, .fullScreen, .reduceMotion, .lowPower: .autoPause
+        case .sessionInactive, .screenLocked, .screenSaver, .asleep: nil
+        }
     }
 }
 

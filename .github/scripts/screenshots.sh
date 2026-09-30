@@ -34,7 +34,7 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 70 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$TOOLS"/focus-motion.jpg "$OUT"/menu.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png; do
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$TOOLS"/focus-motion.jpg "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
@@ -156,6 +156,14 @@ for tab in general motion cursors autoPause about; do
     quit
 done
 
+# カスタムの値を覚えているときの動きのタブ（カスタムが選べて、選ばれていること）
+write_settings '{"motion": {"stretch": 1.3, "wobble": 1}, "customMotion": {"stretch": 1.3, "wobble": 1}}'
+launch -OpenSettings motion
+bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "設定画面が開かなかった"
+screencapture -x -R"$bounds" "$OUT/settings-motion-custom.png"
+quit
+write_settings '{}'
+
 # タブを切り替えたあとの画面を撮る（キーボード操作用の青い枠（フォーカスの枠）が出ていないかを、画像で見る）。
 # 枠はシステム設定の「キーボードナビゲーション」がオンのときに出るので、その設定にして撮り、あとで元に戻す。
 # 枠は薄い色で、画像の数値だけでは確かめにくいので、ここは撮るだけにしている
@@ -184,9 +192,8 @@ else
 fi
 
 # メニューバーのメニューを開いて撮る。macOS 26 ではメニューバーのアイコンが窓の一覧に出ず、
-# クリックする場所が分からないので、起動時の指定でアプリに開かせる。
-# README に使うので、「視差効果を減らす」で止めずに、動いているときのメニューにする。
-write_settings '{"pauseWhenReduceMotion": false, "pauseOnLowPower": false}'
+# クリックする場所が分からないので、起動時の指定でアプリに開かせる。README に使うので、動いているときのメニューにする
+write_settings '{}'
 open -a Finder
 sleep 1
 launch -OpenMenu YES
@@ -201,6 +208,37 @@ else
 fi
 "$TOOLS/press-key" 53 || true
 quit
+
+# メニューバーのアイコンを、動いているとき・一時停止中・オフで撮る（どれも同じ幅で、矢印が同じ位置にあるかを画像で見る）。
+# アイコンはメニューの左上の真上にあるので、メニューの位置から範囲を決める。
+# 一時停止中は、前面の Finder を「止めるアプリ」にして作り、そのときのメニュー（止めている理由と設定を開く項目）も撮る
+if [ -n "${menu:-}" ]; then
+    IFS=, read -r mx my _ _ <<<"$menu"
+    icon_region="$((mx - 40)),0,120,$my"
+    for state in running paused off; do
+        case "$state" in
+            running) write_settings '{}' ;;
+            paused) write_settings '{"excludedApps": [{"bundleID": "com.apple.finder", "name": "Finder"}]}' ;;
+            off) write_settings '{"isEnabled": false}' ;;
+        esac
+        open -a Finder
+        sleep 1
+        if [ "$state" = paused ]; then
+            launch -OpenMenu YES
+            sleep 1
+            if paused_menu=$("$TOOLS/window-bounds" JellyCursor 101); then
+                screencapture -x -R"$paused_menu" "$OUT/menu-paused.png"
+            fi
+            "$TOOLS/press-key" 53 || true
+            sleep 0.5
+        else
+            launch
+        fi
+        screencapture -x -R"$icon_region" "$OUT/status-$state.png"
+        note "アイコン $state: $("$TOOLS/image-stats" "$OUT/status-$state.png")"
+        quit
+    done
+fi
 
 # 設定画面をクリックしてから ⌘W で閉じたら、窓が消えて、前面が開く前のアプリに戻ること。
 # 起動しただけでは前面になれない（macOS 14 からは、ユーザーの操作なしに前面を取れない）ので、実際の使い方と同じくクリックする。
@@ -237,8 +275,8 @@ fi
 quit
 
 # 円を描いて速く動かしている間と、止めた直後（戻る揺れ）の矢印。
-# CI の Mac は「視差効果を減らす」がオンで、初期設定では止まるので、その設定だけ外して撮る
-write_settings '{"pauseWhenReduceMotion": false, "pauseOnLowPower": false}'
+# CI の Mac は「視差効果を減らす」がオンだが、初期設定では止めないので、そのまま動くこと
+write_settings '{}'
 launch
 # 描いている間は、本物のカーソルが隠れていること
 "$TOOLS/diagnose" JellyCursor | tee "$TOOLS/drawing.txt"
@@ -295,7 +333,7 @@ quit
 awk -v v="$idle" 'BEGIN { exit !(v < 10) }' || fail "止まっている間の CPU が多すぎる: ${idle}%"
 
 # ショートカット（⌃⌥⌘J）でオフにすると本物のカーソルが見えて描く窓が消え、もう一度押すと戻ること
-write_settings '{"pauseWhenReduceMotion": false, "pauseOnLowPower": false, "shortcut": {"keyCode": 38, "modifiers": 11, "keyLabel": "J"}}'
+write_settings '{"shortcut": {"keyCode": 38, "modifiers": 11, "keyLabel": "J"}}'
 launch
 "$TOOLS/diagnose" JellyCursor
 set +e

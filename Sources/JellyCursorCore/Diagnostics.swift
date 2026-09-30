@@ -59,9 +59,10 @@ extension Activity {
     // 情報タブと診断情報に出す、今の状態のひとこと
     package var summary: String {
         switch self {
-        case .running: "動いています"
+        case .running: "オン"
         case .off: "オフ"
-        case .safeMode, .paused: statusLine ?? ""
+        case .safeMode: "セーフモード"
+        case .paused: statusLine ?? ""
         }
     }
 }
