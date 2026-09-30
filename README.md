@@ -25,7 +25,7 @@
 ```sh
 make app       # JellyCursor.app を作る
 make run       # 作って開く
-make install   # ~/Applications に入れる（ログイン時の起動を使うときはこちら）
+make install   # ~/Applications に入れる（ログイン時の起動を使うときはこちら。作った JellyCursor.app はフォルダに残さない）
 make test      # 試験を回す
 ```
 
