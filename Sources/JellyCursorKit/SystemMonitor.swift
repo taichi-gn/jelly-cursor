@@ -7,7 +7,7 @@ import JellyCursorCore
 @MainActor
 final class SystemMonitor {
     private(set) var conditions = SystemConditions()
-    // 前面に来た、JellyCursor 以外の最後のアプリ。メニューの「〜では無効」に使う
+    // 前面に来た、JellyCursor 以外の最後のアプリ。設定画面を閉じたときに、このアプリを前に戻す
     private(set) var lastOtherApp: AppIdentity?
     var onChange: (() -> Void)?
     var onNeedsRebuild: (() -> Void)?
