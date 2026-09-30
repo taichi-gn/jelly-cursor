@@ -82,8 +82,12 @@ package enum Tuning {
         static let reference: CGFloat = 3
         // 回すばね。行き過ぎず、短い矢印なら約0.06秒でほぼ回りきる
         static let omega: CGFloat = 55
-        // 回している間に胴体の端が動く速さの上限（pt/秒）。長いうちはゆっくり、縮むにつれて速く回る
-        static let maxTailSpeed: CGFloat = 1500
+        // 回している間に胴体の端が動く速さの上限（pt/秒）。長いうちはゆっくり、縮むにつれて速く回る。
+        // 伸びを残したまま回しても、速く振ったときに約0.1秒で回りきり、1フレームで端が飛びすぎない値
+        static let maxTailSpeed: CGFloat = 2000
+        // 折り返したときに残す伸びの割合。回している間は保ち、回し終えたらこの秒数で減らす
+        static let keepStretch: CGFloat = 0.75
+        static let keepDecay: CGFloat = 0.1
         // ゆっくり折り返したときは、胴体の端が動く速さを、先端の速さのこの倍までにする（ただし minTailSpeed pt/秒 までは許す）
         static let tailSpeedRatio: CGFloat = 4
         static let minTailSpeed: CGFloat = 300

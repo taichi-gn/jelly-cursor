@@ -33,6 +33,9 @@ package final class Jelly: CursorFigure {
     private var sincePivot: CGFloat = 0
     // 回す側を決めかねたとき（止まったときの向きに沿って振ったとき）に回す側。毎回同じ側へ振れるように覚えておく
     private var tieSide: CGFloat = 1
+    // 折り返したときに残す伸び（pt）。縮めてから回すと、折り返した直後のいちばん速く動いている間が短いままに見えるので、
+    // 伸びを残したまま先端のまわりで振り回す（尾が勢いで回り込むように）。回している間は保ち、回し終えたら少しずつ減らす
+    private var heldStretch: CGFloat = 0
 
     private struct Pivot {
         var angle: CGFloat
@@ -45,6 +48,10 @@ package final class Jelly: CursorFigure {
         var curl: CGFloat = 0
         // 前のフレームの回す先の向き。折り返しが抜けたあと、回す先が回り続けても（円を描き続けても）遅れずに追うため
         var lastTarget: CGFloat?
+        // 回す先までの残りの角度（ラジアン）。回す先が決まるまではほぼ逆向き
+        var error: CGFloat = .pi
+        // 先端が折り返しから離れて、回す先が決まっているか
+        var aimed = false
     }
 
     package init(scale: CGFloat, motion: MotionParameters = .standard) {
@@ -66,20 +73,30 @@ package final class Jelly: CursorFigure {
             heading.turn(from: lastMouse, to: mouse, dt: dt)
         }
         let moved = hypot(mouse.x - lastMouse.x, mouse.y - lastMouse.y)
+        let previous = lastMouse
         lastMouse = mouse
         trail.record(mouse, dt: dt)
         // 少し動かしただけのときは、もともと道に沿わせていない
         let fold = heading.commitment > 0 ? trail.fold() : nil
-        updatePivot(mouse: mouse, fold: fold, moved: moved, dt: dt)
+        updatePivot(mouse: mouse, previous: previous, fold: fold, moved: moved, dt: dt)
 
         updatePathGate(mouse: mouse, dt: dt)
-        // 回している間は伸びを戻し、短くしてから回す。回し終えたら、道に沿わせるのに合わせて少しずつ伸ばす（一度に伸ばすと跳ねて見える）。
-        // 道の向きが胴体の向きと逆で、まだ道に沿わせていないうちは伸ばさない（まっすぐなまま前へ伸びないように）
-        let stretch = pivot == nil ? min(trail.length, Tuning.Trail.maxStretch) * pathFollow * pathGate : 0
-        var target = shape.length + stretch * stretchScale * heading.commitment
-        // 道が折り返したら、胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）。
-        // 今の長さが折り返しに届いていなくても、伸びる途中で越えないよう、いつも抑える
-        if let fold {
+        let full = min(trail.length, Tuning.Trail.maxStretch) * stretchScale * heading.commitment
+        let stretch: CGFloat
+        if let p = pivot {
+            // 回している間は、折り返したときの伸びを残したまま回し、新しい向きへ回るにつれて今の速さの伸びへ寄せる
+            let aligned = (1 + cos(p.error)) / 2
+            stretch = max(full * aligned * aligned, heldStretch)
+        } else {
+            // 回し終えたら、道に沿わせるのに合わせて伸ばす。道の向きが胴体の向きと逆で、まだ道に沿わせていないうちは
+            // 伸ばさない（まっすぐなまま前へ伸びないように）。折り返しで残した伸びは、少しずつ減らす
+            stretch = max(full * pathFollow * pathGate, heldStretch)
+            heldStretch *= exp(-dt / Tuning.Fold.keepDecay)
+        }
+        var target = shape.length + stretch
+        // 道が折り返したら、道に沿った胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）。
+        // 今の長さが折り返しに届いていなくても、伸びる途中で越えないよう、いつも抑える。回している間はまっすぐなので抑えない
+        if let fold, pivot == nil {
             target = min(target, max(shape.length, fold.distance))
         }
         if dt > 0 {
@@ -111,6 +128,7 @@ package final class Jelly: CursorFigure {
         engagedTime = 0
         pivotTurns = 0
         sincePivot = 0
+        heldStretch = 0
         started = false
     }
 
@@ -119,7 +137,7 @@ package final class Jelly: CursorFigure {
     // ほぼまっすぐ戻ったときは、速いと1フレームで矢じりより後ろまで戻ることがあるので、そのフレームで動いたぶんまでは
     // 矢じりの中とみなす（画面の書き換えの速さで、回すかどうかが変わらないように）。
     // 回し始めたら、折り返しが胴体より後ろへ抜けるまで続ける
-    private func updatePivot(mouse: CGPoint, fold: Trail.Fold?, moved: CGFloat, dt: CGFloat) {
+    private func updatePivot(mouse: CGPoint, previous: CGPoint, fold: Trail.Fold?, moved: CGFloat, dt: CGFloat) {
         let span = min(length, trail.length)
         var folded = false
         if let fold {
@@ -129,6 +147,7 @@ package final class Jelly: CursorFigure {
             folded = fold.distance < (pivot == nil ? min(span, head) : max(span, Tuning.Fold.minTurnTravel + Tuning.Fold.reference))
         }
         if folded, pivot == nil {
+            heldStretch = max(heldStretch, (length - shape.length) * Tuning.Fold.keepStretch)
             pivot = Pivot(angle: atan2(bodyBack.dy, bodyBack.dx),
                           curl: abs(bodyCurl) > Tuning.Fold.curlAngle ? (bodyCurl > 0 ? 1 : -1) : 0)
         }
@@ -145,14 +164,27 @@ package final class Jelly: CursorFigure {
             // 回す先が回る速さ。ばねはこの速さに合わせて回しながら追う（合わせないと、円を描き続ける間はいつまでも
             // 回す先に追いつけず、回し終わらない。回している間は伸びないので、短いままになる）
             var targetRate: CGFloat = 0
-            if hypot(end.x - mouse.x, end.y - mouse.y) > Tuning.Fold.minTurnTravel {
+            let distance = hypot(end.x - mouse.x, end.y - mouse.y)
+            let aimed = distance > Tuning.Fold.minTurnTravel
+            var turning = dt
+            if aimed {
                 let target = atan2(end.y - mouse.y, end.x - mouse.x)
                 // 折り返しを見ている間は、回す先が折り返しの位置で決まり、道の向きとは関係なく動くので合わせない
                 if !folded, let last = p.lastTarget, dt > 0 {
                     targetRate = min(max(wrapAngle(target - last) / dt, -maxSpeed), maxSpeed)
                 }
                 p.lastTarget = folded ? nil : target
-                if p.side != nil, abs(wrapAngle(target - p.sideTarget)) > .pi / 2 { p.side = nil }
+                // 回している間にまた折り返した（回す先が大きく変わった）ときは、新しく回し始めたのと同じに扱う
+                if p.side != nil, abs(wrapAngle(target - p.sideTarget)) > .pi / 2 {
+                    p.side = nil
+                    p.aimed = false
+                }
+                // 回す先が決まったフレームでは、決まったあとの時間だけ回す。まるごと回すと、画面の書き換えが遅いほど
+                // 早く回り始め、伸びを残した長い胴体では、書き換えの速さで尾の位置が大きく変わる
+                if !p.aimed {
+                    let gained = distance - hypot(end.x - previous.x, end.y - previous.y)
+                    if gained > 0 { turning = dt * min(max((distance - Tuning.Fold.minTurnTravel) / gained, 0), 1) }
+                }
                 if p.side == nil {
                     p.side = turnSide(from: p.angle, to: target, curl: p.curl)
                     p.curl = 0
@@ -166,9 +198,10 @@ package final class Jelly: CursorFigure {
             } else {
                 p.lastTarget = nil
             }
+            p.aimed = aimed
             let spring = DampedSpring(omega: Tuning.Fold.omega, dampingRatio: 1)
             let n = substepCount(for: dt)
-            let h = dt / CGFloat(n)
+            let h = turning / CGFloat(n)
             let before = p.angle
             for _ in 0..<n {
                 p.velocity += spring.velocityChange(error: error, velocity: p.velocity - targetRate, h: h)
@@ -176,6 +209,7 @@ package final class Jelly: CursorFigure {
                 p.angle += p.velocity * h
                 error -= p.velocity * h
             }
+            if aimed { p.error = error }
             pivotTurns += p.angle - before
             p.angle = wrapAngle(p.angle)
             // 回す先が回り続けていると、1フレームのうちに回す先が進むぶん、フレームの終わりには半分ほど遅れて見える。

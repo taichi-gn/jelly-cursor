@@ -38,17 +38,18 @@ package enum PauseReason: Equatable, Sendable {
     case reduceMotion
     case lowPower
 
+    // 「一時停止中（…）」の括弧の中に入れる、止めている理由
     package var message: String {
         switch self {
-        case .noCursorKinds: "描くカーソルの種類がすべてオフです"
+        case .noCursorKinds: "カーソルの種類がすべてオフ"
         case .sessionInactive: "ほかのユーザーに切り替え中"
-        case .screenLocked: "画面がロックされています"
-        case .screenSaver: "スクリーンセーバーが動いています"
+        case .screenLocked: "画面のロック中"
+        case .screenSaver: "スクリーンセーバーの表示中"
         case .asleep: "スリープ中"
-        case .excludedApp(let name): "「\(name)」では無効にしています"
-        case .fullScreen: "全画面のアプリを使っています"
-        case .reduceMotion: "「視差効果を減らす」がオンです"
-        case .lowPower: "低電力モードです"
+        case .excludedApp(let name): "「\(name)」を使用中"
+        case .fullScreen: "全画面のアプリを使用中"
+        case .reduceMotion: "「視差効果を減らす」がオン"
+        case .lowPower: "低電力モード"
         }
     }
 }
@@ -95,19 +96,34 @@ package enum Activity: Equatable, Sendable {
     package var statusLine: String? {
         switch self {
         case .off, .running: nil
-        case .safeMode: "セーフモードで起動しました（オンにすると動きます）"
-        case .paused(let reason): "一時停止中: " + reason.message
+        case .safeMode: "セーフモード（「有効」をオンにすると動きます）"
+        case .paused(let reason): "一時停止中（\(reason.message)）"
         }
     }
 }
 
-// メニューバーのアイコン
-package enum StatusIcon: Equatable, Sendable {
+// メニューバーのアイコン。オフのときだけ薄くする（薄い表示は、Mac では「使えない・オフ」の意味）。
+// 一時停止中は、オンのまま止まっていると分かるよう、動きの線の無い矢印に一時停止の印を付けて、薄くしない
+package enum StatusIcon: Hashable, CaseIterable, Sendable {
     case running
     case off
     case paused
     // 本物のカーソルを隠せず、自前の絵と重なって見えている
     case warning
+
+    // 矢印に付ける小さな印
+    package enum Badge: Hashable, Sendable {
+        case pause
+        case warning
+
+        // SF Symbols の名前
+        package var symbolName: String {
+            switch self {
+            case .pause: "pause.circle.fill"
+            case .warning: "exclamationmark.circle.fill"
+            }
+        }
+    }
 
     package init(activity: Activity, canHideCursor: Bool) {
         switch activity {
@@ -120,14 +136,20 @@ package enum StatusIcon: Equatable, Sendable {
     // SF Symbols の名前
     package var symbolName: String {
         switch self {
-        case .running, .paused: "cursorarrow.motionlines"
-        case .off: "cursorarrow"
-        case .warning: "exclamationmark.triangle"
+        case .running: "cursorarrow.motionlines"
+        case .off, .paused, .warning: "cursorarrow"
         }
     }
 
-    // 一時停止中は薄く表示する
-    package var isDimmed: Bool { self == .paused }
+    package var badge: Badge? {
+        switch self {
+        case .paused: .pause
+        case .warning: .warning
+        case .running, .off: nil
+        }
+    }
+
+    package var isDimmed: Bool { self == .off }
 
     package var accessibilityDescription: String {
         switch self {

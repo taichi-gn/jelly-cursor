@@ -120,6 +120,7 @@ private struct GeneralPane: View {
         }
         .confirmationDialog("すべての設定を初期状態に戻しますか？", isPresented: $confirmsReset) {
             Button("初期状態に戻す", role: .destructive) { settings.reset() }
+            Button("キャンセル", role: .cancel) {}
         } message: {
             Text("ログイン時に起動する設定は変わりません。")
         }
@@ -129,22 +130,34 @@ private struct GeneralPane: View {
 // 動き: プリセット・強さ・プレビュー
 private struct MotionPane: View {
     @Bindable var settings: AppSettings
+    // 選べないカスタムが押されたときに、切り替えを作り直して今の選択に戻す
+    @State private var presetRedraw = 0
 
     var body: some View {
         Form {
             Section {
+                // カスタムはいつも出して、切り替えの位置がずれないようにする。スライダーでプリセットと違う値にすると
+                // カスタムになり、その値を覚えておく。まだカスタムにしたことがなければ選べない
                 Picker("プリセット", selection: Binding(
                     get: { settings.values.preset },
-                    set: { if let preset = $0 { settings.values.motion = preset.style } })
+                    set: { preset in
+                        if let preset {
+                            settings.values.motion = preset.style
+                        } else if settings.values.customMotion != nil {
+                            settings.values.applyCustomMotion()
+                        } else {
+                            presetRedraw += 1
+                        }
+                    })
                 ) {
                     ForEach(MotionPreset.allCases, id: \.self) { preset in
                         Text(preset.title).tag(Optional(preset))
                     }
-                    if settings.values.preset == nil {
-                        Text("カスタム").tag(MotionPreset?.none)
-                    }
+                    Text("カスタム").tag(MotionPreset?.none)
+                        .selectionDisabled(settings.values.customMotion == nil)
                 }
                 .pickerStyle(.segmented)
+                .id(presetRedraw)
 
                 StrengthSlider(title: "伸び", value: $settings.values.motion.stretch,
                                low: "なし", high: "大きく",
@@ -392,9 +405,9 @@ private struct AboutPane: View {
             }
 
             Section {
-                LabeledContent("今の状態", value: status)
-                LabeledContent("本物のカーソルを隠す",
-                               value: state.canHideCursor ? "できます" : "できません（自前の絵を重ねて描きます）")
+                LabeledContent("状態", value: status)
+                LabeledContent("本物のカーソルの非表示",
+                               value: state.canHideCursor ? "使用可能" : "使用不可（本物のカーソルに重ねて表示）")
             }
 
             Section("困ったとき") {

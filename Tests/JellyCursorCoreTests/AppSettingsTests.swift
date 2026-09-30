@@ -32,6 +32,29 @@ import Testing
         #expect(reloaded.values.preset == nil)
     }
 
+    // カスタムにした値は、プリセットを選んだあとでも覚えていて、カスタムを選ぶと戻る
+    @Test func remembersCustomMotion() {
+        let defaults = freshDefaults()
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.values.customMotion == nil)
+        // まだカスタムにしたことがなければ、カスタムを選んでも変わらない
+        settings.values.applyCustomMotion()
+        #expect(settings.values.preset == .standard)
+
+        settings.values.motion.stretch = 1.3
+        let custom = MotionStyle(stretch: 1.3, wobble: 1)
+        #expect(settings.values.preset == nil)
+        #expect(settings.values.customMotion == custom)
+        settings.values.motion = MotionPreset.lively.style
+        #expect(settings.values.preset == .lively)
+        #expect(settings.values.customMotion == custom)
+        #expect(AppSettings(defaults: defaults).values.customMotion == custom)
+        settings.values.applyCustomMotion()
+        #expect(settings.values.motion == custom)
+        settings.reset()
+        #expect(settings.values.customMotion == nil)
+    }
+
     @Test func notifiesWithOldValueOnlyWhenChanged() {
         let settings = AppSettings(defaults: freshDefaults())
         var received: [SettingsValues] = []
@@ -52,9 +75,11 @@ import Testing
         let values = AppSettings(defaults: defaults).values
         #expect(!values.isEnabled)
         #expect(values.motion == MotionStyle(stretch: 0.5, wobble: 1))
+        // カスタムを覚えていなかった版の設定でも、プリセットと違う値ならカスタムとして覚える
+        #expect(values.customMotion == values.motion)
         #expect(!values.cursorKinds.arrow && values.cursorKinds.iBeam && values.cursorKinds.pointingHand)
         #expect(values.shortcut == nil)
-        #expect(values.pauseWhenReduceMotion && values.pauseOnLowPower && !values.pauseInFullScreen)
+        #expect(!values.pauseWhenReduceMotion && !values.pauseOnLowPower && !values.pauseInFullScreen)
         // 「クリックで弾む」が無かった版の設定は、オンとして読む
         #expect(values.clickBounce)
     }

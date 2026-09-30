@@ -148,6 +148,47 @@ import Testing
         }
     }
 
+    // 左右にまっすぐ振っても、折り返しで縮めずに伸びたまま回るので、速く動いている間はいつも伸びていて、
+    // 折り返してから 0.12 秒のうちに新しい向きへ回りきる（縮めてから回していたときは、折り返した直後が元の長さのままだった）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func shakingKeepsStretchThroughTurns(rate: CGFloat) {
+        for (amplitude, frequency) in [(100, 3), (150, 2.5), (250, 1.5), (60, 5)] as [(CGFloat, CGFloat)] {
+            let arrow = Jelly(scale: 1)
+            arrow.step(to: CGPoint(x: 500, y: 500), dt: 0)
+            let rest = arrow.points.map { hypot($0.x - 500, $0.y - 500) }.max() ?? 0
+            let top = 2 * .pi * frequency * amplitude
+            var shortest = CGFloat.infinity, slowest: CGFloat = 0, worstOverlap: CGFloat = 0
+            var lastVelocity: CGFloat = 0, turnedAt: CGFloat?
+            let warmUp = 2 / frequency
+            for i in 1...Int((warmUp + 2 / frequency) * rate) {
+                let t = CGFloat(i) / rate
+                let mouse = CGPoint(x: 500 + amplitude * sin(2 * .pi * frequency * t), y: 500)
+                let velocity = 2 * .pi * frequency * amplitude * cos(2 * .pi * frequency * t)
+                arrow.step(to: mouse, dt: 1 / rate)
+                guard t > warmUp else { continue }
+                let reach = arrow.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0
+                if abs(velocity) > 0.6 * top { shortest = min(shortest, reach) }
+                worstOverlap = max(worstOverlap, overlapArea(arrow.points))
+                if velocity * lastVelocity < 0 { turnedAt = t }
+                lastVelocity = velocity
+                // 胴体（先端から頂点の平均）が、動く向きの後ろ 30 度以内に来たら回りきった
+                if let turned = turnedAt {
+                    let cx = arrow.points.map(\.x).reduce(0, +) / CGFloat(arrow.points.count)
+                    let cy = arrow.points.map(\.y).reduce(0, +) / CGFloat(arrow.points.count)
+                    let behind: CGFloat = velocity > 0 ? .pi : 0
+                    if abs(wrapAngle(atan2(cy - mouse.y, cx - mouse.x) - behind)) < .pi / 6 {
+                        slowest = max(slowest, t - turned)
+                        turnedAt = nil
+                    }
+                }
+            }
+            let label = "±\(amplitude)pt \(frequency)回/秒 \(Int(rate))Hz"
+            #expect(shortest > 2 * rest, "\(label): 速く動いている間の長さ \(shortest / rest) 倍")
+            #expect(slowest < 0.12, "\(label): 折り返してから回りきるまで \(slowest) 秒")
+            #expect(worstOverlap < 1, "\(label): \(worstOverlap)")
+        }
+    }
+
     // まっすぐ速く動かして一瞬で逆向きに戻しても、画面の書き換えの速さによらず、矢じりが折り返しで崩れず、大きく飛ばない
     @Test(arguments: [60, 120, 240] as [CGFloat])
     func sharpUTurnsStayWhole(rate: CGFloat) {

@@ -45,12 +45,18 @@ package struct ExcludedApp: Codable, Equatable, Hashable, Identifiable, Sendable
 // 保存する設定の値。項目が増えたり壊れたりしても、読めない項目だけ初期値に戻して読む
 package struct SettingsValues: Codable, Equatable, Sendable {
     package var isEnabled = true
-    package var motion = MotionStyle.standard
+    // 動きの強さ。どのプリセットとも違う値にしたら、カスタムとして覚えておく
+    package var motion = MotionStyle.standard {
+        didSet { if MotionPreset(matching: motion) == nil { customMotion = motion } }
+    }
+    // 最後にカスタムにした値。プリセットを選んだあとでも、カスタムを選べばこの値に戻す
+    package private(set) var customMotion: MotionStyle?
     // クリックしたときに、押すとつぶれ、離すと弾んで戻る
     package var clickBounce = true
     package var cursorKinds = CursorKinds()
-    package var pauseWhenReduceMotion = true
-    package var pauseOnLowPower = true
+    // Mac の設定に合わせて止めるのは、選んだときだけ（オンにしたら動く、を基本にする）
+    package var pauseWhenReduceMotion = false
+    package var pauseOnLowPower = false
     package var pauseInFullScreen = false
     package var excludedApps: [ExcludedApp] = []
     package var showsMenuBarIcon = true
@@ -59,7 +65,7 @@ package struct SettingsValues: Codable, Equatable, Sendable {
     package init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, motion, clickBounce, cursorKinds, pauseWhenReduceMotion, pauseOnLowPower, pauseInFullScreen
+        case isEnabled, motion, customMotion, clickBounce, cursorKinds, pauseWhenReduceMotion, pauseOnLowPower, pauseInFullScreen
         case excludedApps, showsMenuBarIcon, shortcut
     }
 
@@ -68,6 +74,9 @@ package struct SettingsValues: Codable, Equatable, Sendable {
         let d = SettingsValues()
         isEnabled = (try? c.decode(Bool.self, forKey: .isEnabled)) ?? d.isEnabled
         motion = (try? c.decode(MotionStyle.self, forKey: .motion)) ?? d.motion
+        // カスタムを覚えていなかった版で、プリセットと違う値にしていたら、その値をカスタムとして覚える
+        customMotion = (try? c.decode(MotionStyle.self, forKey: .customMotion))
+            ?? (MotionPreset(matching: motion) == nil ? motion : nil)
         clickBounce = (try? c.decode(Bool.self, forKey: .clickBounce)) ?? d.clickBounce
         cursorKinds = (try? c.decode(CursorKinds.self, forKey: .cursorKinds)) ?? d.cursorKinds
         pauseWhenReduceMotion = (try? c.decode(Bool.self, forKey: .pauseWhenReduceMotion)) ?? d.pauseWhenReduceMotion
@@ -79,6 +88,11 @@ package struct SettingsValues: Codable, Equatable, Sendable {
     }
 
     package var preset: MotionPreset? { MotionPreset(matching: motion) }
+
+    // カスタムの値に戻す。まだカスタムにしたことがなければ何もしない
+    package mutating func applyCustomMotion() {
+        if let customMotion { motion = customMotion }
+    }
 
     // 描く側に渡す動きの値
     package var motionParameters: MotionParameters { MotionParameters(motion, clickBounce: clickBounce) }
