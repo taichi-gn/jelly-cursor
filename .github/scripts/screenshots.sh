@@ -34,7 +34,7 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 70 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$TOOLS"/focus-motion.jpg "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png; do
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$TOOLS"/focus-motion.jpg "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png "$OUT"/reset-dialog.png "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
@@ -185,6 +185,36 @@ else
     note "クリックを送る許可が無いので、フォーカスの枠の確認は飛ばした"
 fi
 quit
+
+# 「すべての設定を初期状態に戻す」の確認を撮り、Return を押しても初期状態に戻らない（戻すボタンを既定のボタンにしない）こと。
+# キーボードナビゲーションがオンの間に撮るので、スペースキーで押されるキャンセルに枠が出ているはず
+write_settings '{"clickBounce": false}'
+launch -OpenSettings general
+bounds=$("$TOOLS/window-bounds" JellyCursor) || fail "設定画面が開かなかった"
+set +e
+reset=$(ax_frame local.jellycursor "すべての設定を初期状態に戻す…")
+found=$?
+set -e
+if [ "$found" -eq 0 ]; then
+    IFS=, read -r rx ry rw rh <<<"$reset"
+    if "$TOOLS/click" $((rx + rw / 2)) $((ry + rh / 2)); then
+        sleep 1
+        IFS=, read -r wx wy ww wh <<<"$bounds"
+        screencapture -x -R"$wx,$wy,$ww,$wh" "$OUT/reset-dialog.png"
+        "$TOOLS/press-key" 36
+        sleep 1
+        saved=$(defaults export local.jellycursor - | plutil -extract settings raw -o - - | base64 -d)
+        note "Return を押したあとの設定: $saved"
+        grep -Eq '"clickBounce": ?false' <<<"$saved" || fail "確認で Return を押したら、設定が初期状態に戻った"
+        "$TOOLS/press-key" 53 || true
+    else
+        note "クリックを送る許可が無いので、初期状態に戻す確認は飛ばした"
+    fi
+else
+    note "初期状態に戻すボタンが見つからないので、その確認は飛ばした"
+fi
+quit
+write_settings '{}'
 if [ -n "$keyboard_ui" ]; then
     defaults write NSGlobalDomain AppleKeyboardUIMode -int "$keyboard_ui"
 else
