@@ -25,7 +25,10 @@ done
 # 終わるとき（途中で失敗したときも）に、撮った画像と結果の要点を出す。
 # 成果物を取り出せない環境でも見られるよう、画像は base64 でログにも出す。画面全体は大きいので縮めた JPEG にする。
 # 設定画面の各タブは成果物にだけ入れ、ログには、確かめたい画像だけを出す
+# macOS の bash 3.2 は、変数の読み違いなどで途中で終わったとき、ここの最後のコマンドの結果（成功）で終わってしまうので、
+# 終わったときの結果を覚えておいて、それで終わる
 report() {
+    local status=$?
     for name in screen menu-screen; do
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
@@ -44,7 +47,7 @@ report() {
     done
     echo "===== まとめ ====="
     cat "$SUMMARY"
-    return
+    exit "$status"
     for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/focus-motion.jpg "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$OUT"/reset-dialog.png "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png "$OUT"/text-hover.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
@@ -53,6 +56,7 @@ report() {
     done
     echo "===== まとめ ====="
     cat "$SUMMARY"
+    exit "$status"
 }
 trap report EXIT
 
@@ -388,12 +392,12 @@ if text=$("$TOOLS/window-bounds" TextEdit); then
             launch
         fi
         "$TOOLS/cursor-watch" 3 "$px" "$py" >"$TOOLS/cursor-still-$state.txt"
-        note "文字の上で止めている間（JellyCursor $state）: $(tail -1 "$TOOLS/cursor-still-$state.txt")"
+        note "文字の上で止めている間（JellyCursor ${state}）: $(tail -1 "$TOOLS/cursor-still-$state.txt")"
         "$TOOLS/move-mouse" "$px" "$py" 30 3 &
         mover=$!
         "$TOOLS/cursor-watch" 3 >"$TOOLS/cursor-moving-$state.txt"
         wait "$mover"
-        note "文字の上で動かしている間（JellyCursor $state）: $(tail -1 "$TOOLS/cursor-moving-$state.txt")"
+        note "文字の上で動かしている間（JellyCursor ${state}）: $(tail -1 "$TOOLS/cursor-moving-$state.txt")"
         head -20 "$TOOLS/cursor-still-$state.txt" "$TOOLS/cursor-moving-$state.txt"
         if [ "$state" = with ]; then
             # 止めている間に描いている形を、少しずつ時間をずらして撮る（矢印と I 字が入れ替わっていれば、画像が変わる）
