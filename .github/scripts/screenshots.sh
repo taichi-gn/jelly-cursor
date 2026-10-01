@@ -37,8 +37,13 @@ report() {
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 70 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
+    # 文言を確かめる設定のタブ。ログに収まるよう、1倍の大きさの JPEG にする
+    for name in settings-general settings-cursors settings-autoPause settings-about; do
+        [ -f "$OUT/$name.png" ] || continue
+        sips -s format jpeg -s formatOptions 75 --resampleWidth 560 "$OUT/$name.png" --out "$TOOLS/$name-small.jpg" >/dev/null || true
+    done
     # ログは長いと先頭から切れて取り出せないので、大きい画像を先に、確かめたい画像をあとに出す
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/focus-motion.jpg "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$OUT"/reset-dialog.png "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png; do
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/focus-motion.jpg "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$OUT"/reset-dialog.png "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png "$TOOLS"/settings-general-small.jpg "$TOOLS"/settings-cursors-small.jpg "$TOOLS"/settings-autoPause-small.jpg "$TOOLS"/settings-about-small.jpg; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
