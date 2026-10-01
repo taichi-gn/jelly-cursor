@@ -36,9 +36,9 @@ package struct Diagnostics: Sendable {
             "JellyCursor \(appVersion)",
             "macOS \(osVersion)",
             "状態: \(activity.summary)",
-            "本物のカーソルを隠す: \(canHideCursor ? "できる" : "できない")",
+            "macOS のカーソルを隠す: \(canHideCursor ? "できる" : "できない")",
             "セーフモード: \(safeMode ? "はい" : "いいえ")",
-            "ポインタの大きさ: \(String(format: "%.2f", pointerScale))",
+            "ポインタのサイズ: \(String(format: "%.2f", pointerScale))",
             "画面: \(screens.isEmpty ? "なし" : screens.joined(separator: ", "))",
             "ショートカット: \(shortcut)",
         ]

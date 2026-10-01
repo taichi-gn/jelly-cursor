@@ -129,7 +129,7 @@ import Testing
         let lines = report.text.split(separator: "\n").map(String.init)
         #expect(lines[0] == "JellyCursor 0.3 (3)")
         #expect(lines.contains("状態: 一時停止中（低電力モード）"))
-        #expect(lines.contains("ポインタの大きさ: 1.50"))
+        #expect(lines.contains("ポインタのサイズ: 1.50"))
         #expect(lines.contains("画面: 1512×982@2.0x, 1920×1080@1.0x"))
         #expect(lines.contains("ショートカット: ⌃⌥J（登録できない）"))
         #expect(lines.last?.hasPrefix("設定: {") == true)
@@ -149,6 +149,6 @@ import Testing
         #expect(Activity.running.summary == "オン")
         #expect(Activity.off.summary == "オフ")
         #expect(Activity.safeMode.summary == "セーフモード")
-        #expect(Activity.paused(.fullScreen).summary == "一時停止中（全画面のアプリを使用中）")
+        #expect(Activity.paused(.fullScreen).summary == "一時停止中（フルスクリーンのアプリを使用中）")
     }
 }

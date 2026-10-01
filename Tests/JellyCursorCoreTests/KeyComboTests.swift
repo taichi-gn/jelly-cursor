@@ -39,7 +39,7 @@ import Testing
     }
 
     @Test func labels() {
-        #expect(KeyCombo.label(keyCode: 0x31, characters: " ") == "Space")
+        #expect(KeyCombo.label(keyCode: 0x31, characters: " ") == "スペース")
         #expect(KeyCombo.label(keyCode: 0x60, characters: "\u{F708}") == "F5")
         #expect(KeyCombo.label(keyCode: 0x7E, characters: nil) == "↑")
         #expect(KeyCombo.label(keyCode: 0x2C, characters: "/") == "/")

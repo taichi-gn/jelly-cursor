@@ -67,8 +67,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             addInfo(line, symbol: "pause.circle")
             // 止めている理由を設定で変えられるときは、その設定を開く項目を添える（状態の行は押せる項目にしない）
             if case .paused(let reason) = state.activity, let tab = Self.settingsTab(for: reason) {
-                let fix = addItem(tab == .cursors ? "カーソルの設定…" : "自動で止める設定…",
-                                  action: #selector(openPauseSettings(_:)), symbol: "gearshape")
+                let fix = addItem("\(tab.title)の設定…", action: #selector(openPauseSettings(_:)), symbol: "gearshape")
                 fix.representedObject = tab.rawValue
             }
         }
@@ -96,10 +95,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         if !state.canHideCursor {
-            addInfo("本物のカーソルを隠せないため、重ねて描いています", symbol: "exclamationmark.triangle")
+            addInfo("macOS のカーソルを隠せないため、その上に重ねて表示しています", symbol: "exclamationmark.triangle")
         }
         if state.shortcutFailed, let shortcut = values.shortcut {
-            addInfo("\(shortcut.displayString) はほかのアプリが使っているため登録できませんでした",
+            addInfo("ショートカット \(shortcut.displayString) は、ほかのアプリが使っているため登録できませんでした",
                     symbol: "exclamationmark.triangle")
         }
         let settingsItem = addItem("設定…", action: #selector(openSettings), symbol: "gearshape")
