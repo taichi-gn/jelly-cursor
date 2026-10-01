@@ -63,10 +63,9 @@ struct Trail {
         return CGVector(dx: (b.x - a.x) / d, dy: (b.y - a.y) / d)
     }
 
-    // 道の折り返し。先端からの道のりと、曲がった角度の cos（-1 でまっすぐ逆向き）
+    // 道の折り返し。先端からの道のり
     struct Fold {
         let distance: CGFloat
-        let cosine: CGFloat
     }
 
     // 先端から道をたどり、先端近くの向きから Fold.angle より大きく曲がった（折り返した）ところ。
@@ -84,7 +83,13 @@ struct Trail {
             let sx = polyline[i].x - polyline[i - 1].x, sy = polyline[i].y - polyline[i - 1].y
             // 長さ0の区間は作らないので、区間の長さで割ってよい
             let cosine = (sx * rx + sy * ry) / (hypot(sx, sy) * rl)
-            if cosine < limit { return Fold(distance: distances[i - 1], cosine: cosine) }
+            guard cosine < limit else { continue }
+            // 曲がった角度は、折り返しから reference px 先までの向きで測り直す。折り返した瞬間にできるごく短い区間の
+            // 向きはでたらめなので、それだけで見ると、折り返していないのに折り返したとみなしたり、角度を見誤ったりする
+            let a = polyline[i - 1], b = point(at: distances[i - 1] + reference)
+            let bx = b.x - a.x, by = b.y - a.y, bl = hypot(bx, by)
+            let measured = bl > reference / 2 ? (bx * rx + by * ry) / (bl * rl) : cosine
+            if measured < limit { return Fold(distance: distances[i - 1]) }
         }
         return nil
     }

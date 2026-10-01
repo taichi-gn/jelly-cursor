@@ -33,9 +33,16 @@ package final class Jelly: CursorFigure {
     private var sincePivot: CGFloat = 0
     // 回す側を決めかねたとき（止まったときの向きに沿って振ったとき）に回す側。毎回同じ側へ振れるように覚えておく
     private var tieSide: CGFloat = 1
-    // 折り返したときに残す伸び（pt）。縮めてから回すと、折り返した直後のいちばん速く動いている間が短いままに見えるので、
-    // 伸びを残したまま先端のまわりで振り回す（尾が勢いで回り込むように）。回している間は保ち、回し終えたら少しずつ減らす
+    // 回し終えたときの伸び（pt）。回し終えた直後は、道に沿わせるのが戻るまで今の速さの伸びが小さく出るので、
+    // 回し終えたときの長さを保ち、少しずつ減らす（向きがそろった直後に、縮んでからまた伸びないように）
     private var heldStretch: CGFloat = 0
+    // 今の速さ（pt/秒）。道のりで決める伸びは Tuning.Trail.duration 秒の間の平均の速さで決まり、止まりかけても
+    // しばらく長いままなので、今の速さでも抑える（左右に振ったとき、端で縮んで真ん中で伸びるように）
+    private var recentSpeed: CGFloat = 0
+    // 位置が変わらないフレームが続いている秒数
+    private var stillTime: CGFloat = 0
+    // まっすぐな胴体の向きが、先端近くの道の向きにそろっている度合い（1 でそろっている、0 で逆向き）
+    private var pathAligned: CGFloat = 1
 
     private struct Pivot {
         var angle: CGFloat
@@ -81,26 +88,33 @@ package final class Jelly: CursorFigure {
         updatePivot(mouse: mouse, previous: previous, fold: fold, moved: moved, dt: dt)
 
         updatePathGate(mouse: mouse, dt: dt)
-        let full = min(trail.length, Tuning.Trail.maxStretch) * stretchScale * heading.commitment
+        updateRecentSpeed(moved: moved, dt: dt)
+        let reach = min(trail.length, Tuning.Trail.maxStretch, recentSpeed * Tuning.Trail.duration)
+        let full = reach * stretchScale * heading.commitment
         let stretch: CGFloat
         if let p = pivot {
-            // 回している間は、折り返したときの伸びを残したまま回し、新しい向きへ回るにつれて今の速さの伸びへ寄せる
+            // 回している間は、新しい向きへ回るにつれて今の速さの伸びへ寄せる。逆を向いているうちはほとんど伸ばさない
+            // （長いまま振り回すと、折り返したあとの真ん中あたりで、長い胴体が横や前を向いて見える）
             let aligned = (1 + cos(p.error)) / 2
-            stretch = max(full * aligned * aligned, heldStretch)
+            stretch = full * aligned * aligned * aligned
         } else {
             // 回し終えたら、道に沿わせるのに合わせて伸ばす。道の向きが胴体の向きと逆で、まだ道に沿わせていないうちは
-            // 伸ばさない（まっすぐなまま前へ伸びないように）。折り返しで残した伸びは、少しずつ減らす
-            stretch = max(full * pathFollow * pathGate, heldStretch)
+            // 伸ばさない（まっすぐなまま前へ伸びないように）。回し終えたときの伸びは、まっすぐな胴体が道の向きに
+            // そろっている間だけ使い、少しずつ減らす
+            stretch = max(full * pathFollow * pathGate, heldStretch * pathAligned)
             heldStretch *= exp(-dt / Tuning.Fold.keepDecay)
         }
         var target = shape.length + stretch
-        // 道が折り返したら、道に沿った胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）。
-        // 今の長さが折り返しに届いていなくても、伸びる途中で越えないよう、いつも抑える。回している間はまっすぐなので抑えない
-        if let fold, pivot == nil {
+        // 道が折り返したら、胴体は折り返しより後ろへのばさない。伸びたぶんは道に沿って縮める（折り返しで重ならないように）。
+        // 今の長さが折り返しに届いていなくても、伸びる途中で越えないよう、いつも抑える。回している間も、折り返してから
+        // 進んだ道のりより長くしない（曲がった長い胴体を、まっすぐにして大きく振らないように）
+        if let fold {
             target = min(target, max(shape.length, fold.distance))
         }
         if dt > 0 {
-            length += (target - length) * (1 - exp(-dt / Tuning.Trail.lengthSmoothing))
+            // 回し始めたら早く縮める（長い胴体を振り回さないように）
+            let smoothing = pivot != nil && target < length ? Tuning.Fold.shrinkSmoothing : Tuning.Trail.lengthSmoothing
+            length += (target - length) * (1 - exp(-dt / smoothing))
         }
         layOut(at: mouse)
         // クリックしたら、先端（クリック位置）を動かさずに、胴体の向きへつぶす
@@ -129,25 +143,49 @@ package final class Jelly: CursorFigure {
         pivotTurns = 0
         sincePivot = 0
         heldStretch = 0
+        recentSpeed = 0
+        stillTime = 0
+        pathAligned = 1
         started = false
+    }
+
+    // マウスの報告より画面の書き換えが速いと、位置が変わらないフレームが混じる（90Hz で報告するトラックパッドと
+    // 120Hz の画面など）。それを止まりかけたと数えると、一定の速さで動かしていても長さが細かく縮んでは伸びるので、
+    // 少しの間は数えない
+    private func updateRecentSpeed(moved: CGFloat, dt: CGFloat) {
+        guard dt > 0 else { return }
+        stillTime = moved > 0 ? 0 : stillTime + dt
+        guard moved > 0 || stillTime > Tuning.Trail.stillHold else { return }
+        recentSpeed += (moved / dt - recentSpeed) * (1 - exp(-dt / Tuning.Trail.speedSmoothing))
     }
 
     // 矢じり（先端から普段の長さのうち）で道が折り返したら、道に沿わせず、まっすぐにして先端のまわりで回す。
     // 道に沿わせたままだと、幅の広い矢じりが折り返しで自分と重なり、形が崩れて見える。
-    // ほぼまっすぐ戻ったときは、速いと1フレームで矢じりより後ろまで戻ることがあるので、そのフレームで動いたぶんまでは
-    // 矢じりの中とみなす（画面の書き換えの速さで、回すかどうかが変わらないように）。
+    // 速いと1フレームで矢じりより後ろまで戻ることがあるので、そのフレームで動いたぶんまでは矢じりの中とみなす
+    // （画面の書き換えの速さで、回すかどうかが変わらないように）。
     // 回し始めたら、折り返しが胴体より後ろへ抜けるまで続ける
     private func updatePivot(mouse: CGPoint, previous: CGPoint, fold: Trail.Fold?, moved: CGFloat, dt: CGFloat) {
         let span = min(length, trail.length)
         var folded = false
         if let fold {
-            let head = shape.length + (fold.cosine < cos(Tuning.Fold.reversalAngle) ? moved : 0)
+            let head = shape.length + moved
             // 回し始めたら、折り返しが胴体より後ろへ抜けるまで続ける。ゆっくり折り返したときは直近の道が短いので、
             // 回す先が決まる（先端が折り返しから minTurnTravel 離れる）までは抜けたとみなさない（回さないまま終わらないように）
             folded = fold.distance < (pivot == nil ? min(span, head) : max(span, Tuning.Fold.minTurnTravel + Tuning.Fold.reference))
         }
+        // 折り返しが矢じりより後ろでも、まだ道に沿わせていないとき（回し終えた直後など）に、まっすぐな胴体の向きが
+        // 道の向きと逆なら回す。回さないと、まっすぐな胴体が逆を向いたまま、ゆっくり向きを変えることになる。
+        // ただし、先端から折り返しまでの道が曲がり続けているとき（速く円を描いているとき）は、道に沿わせるのに任せる
+        // （回し終えるたびにまた回して、胴体がばたつかないように）
+        if !folded, pivot == nil, let fold, pathEngagement < Tuning.Trail.gateHold,
+           let cosine = pathCosine(mouse: mouse, back: heading.axis.negated), cosine < Tuning.Trail.opposedCosine,
+           let near = (trail.point(at: min(trail.length, shape.length / 2)) - mouse).normalized,
+           let far = (trail.point(at: fold.distance) - mouse).normalized,
+           near.dx * far.dx + near.dy * far.dy > Tuning.Fold.straightCosine {
+            folded = true
+        }
         if folded, pivot == nil {
-            heldStretch = max(heldStretch, (length - shape.length) * Tuning.Fold.keepStretch)
+            heldStretch = 0
             pivot = Pivot(angle: atan2(bodyBack.dy, bodyBack.dx),
                           curl: abs(bodyCurl) > Tuning.Fold.curlAngle ? (bodyCurl > 0 ? 1 : -1) : 0)
         }
@@ -217,6 +255,7 @@ package final class Jelly: CursorFigure {
             if !folded && abs(error + targetRate * dt / 2) < Tuning.Fold.finishAngle {
                 // 回し終えた向きから、ふだんの向きの動き（進行方向へ向ける・止めたら左上へ戻す）を続ける
                 heading.align(angle: p.angle + .pi, velocity: p.velocity)
+                heldStretch = max(length - shape.length, 0)
                 pivot = nil
             } else {
                 pivot = p
@@ -275,13 +314,15 @@ package final class Jelly: CursorFigure {
     private func updatePathGate(mouse: CGPoint, dt: CGFloat) {
         guard dt > 0 else { return }
         var target: CGFloat = 1
-        if trail.length > 0, let path = (trail.point(at: min(trail.length, shape.length / 2)) - mouse).normalized {
-            let back = restBack
-            let cosine = path.dx * back.dx + path.dy * back.dy
+        if let cosine = pathCosine(mouse: mouse, back: restBack) {
             let t = min(max((cosine - Tuning.Trail.opposingCosine) / (Tuning.Trail.opposedCosine - Tuning.Trail.opposingCosine), 0), 1)
             target = 1 - t * t * (3 - 2 * t)
         }
-        if pathEngagement >= Tuning.Trail.gateHold {
+        pathAligned = target
+        // 回し終えて道に沿わせるのを戻している間も、すでに道に沿っているときと同じに保つ。まっすぐな胴体は回し終えた向きで
+        // 道にそろえてあるが、速く円を描いているときなどは向きの動きが道に遅れていくので、下げると、遅れた向きの
+        // まっすぐな胴体と道の間で混ざって、先端へ縮む
+        if pathEngagement >= Tuning.Trail.gateHold || (pivot == nil && pathFollow < 1) {
             // 速く動き出して1フレームで沿わせたい状態になったときは、下げてから保つ（下げる前に保って、逆向きのまま沿わせないように）
             if engagedTime == 0 { pathGate = min(pathGate, target) }
             engagedTime += dt
@@ -293,6 +334,12 @@ package final class Jelly: CursorFigure {
         let tau = target < pathGate ? Tuning.Trail.gateCloseTime : Tuning.Trail.gateOpenTime
         pathGate += (target - pathGate) * (1 - exp(-dt / tau))
         if pathGate > 0.999 { pathGate = 1 }
+    }
+
+    // 先端近くの道の向き（先端から後ろへ）と back の cos。道がまだ無ければ nil
+    private func pathCosine(mouse: CGPoint, back: CGVector) -> CGFloat? {
+        guard trail.length > 0, let path = (trail.point(at: min(trail.length, shape.length / 2)) - mouse).normalized else { return nil }
+        return path.dx * back.dx + path.dy * back.dy
     }
 
     // 矢印の軸を道筋に沿って曲げ、各頂点をその地点の向きに対して横へずらす

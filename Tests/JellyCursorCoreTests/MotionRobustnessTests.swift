@@ -148,17 +148,21 @@ import Testing
         }
     }
 
-    // 左右にまっすぐ振っても、折り返しで縮めずに伸びたまま回るので、速く動いている間はいつも伸びていて、
-    // 折り返してから 0.12 秒のうちに新しい向きへ回りきる（縮めてから回していたときは、折り返した直後が元の長さのままだった）
+    // 左右にまっすぐ振ると、折り返しの近くで縮んで新しい向きへすばやく回り、真ん中では伸びている。
+    // - 折り返してから 0.08 秒のうちに、胴体が動く向きの後ろへ回りきって、元の長さの2倍より伸びる
+    //   （縮めてから回していたときは、折り返したあと短いまま 0.17 秒ほど残った）
+    // - 往復の真ん中（いちばん速いあたり）では、元の長さの2倍より伸びている
+    // - 長いまま横や前を向いている時間は、1フレームほどまで（伸びを残したまま振り回していたときは、
+    //   折り返したあとの真ん中あたりまで、長い胴体が横を向いていた）
     @Test(arguments: [60, 120, 240] as [CGFloat])
-    func shakingKeepsStretchThroughTurns(rate: CGFloat) {
-        for (amplitude, frequency) in [(100, 3), (150, 2.5), (250, 1.5), (60, 5)] as [(CGFloat, CGFloat)] {
+    func shakingTurnsAtTheEndsAndStretchesInTheMiddle(rate: CGFloat) {
+        for (amplitude, frequency) in [(100, 3), (150, 2.5), (250, 1.5), (200, 2.5)] as [(CGFloat, CGFloat)] {
             let arrow = Jelly(scale: 1)
             arrow.step(to: CGPoint(x: 500, y: 500), dt: 0)
             let rest = arrow.points.map { hypot($0.x - 500, $0.y - 500) }.max() ?? 0
             let top = 2 * .pi * frequency * amplitude
-            var shortest = CGFloat.infinity, slowest: CGFloat = 0, worstOverlap: CGFloat = 0
-            var lastVelocity: CGFloat = 0, turnedAt: CGFloat?
+            var middle = CGFloat.infinity, slowest: CGFloat = 0, wrongWay: CGFloat = 0, longestWrongWay: CGFloat = 0
+            var worstOverlap: CGFloat = 0, lastVelocity: CGFloat = 0, turnedAt: CGFloat?
             let warmUp = 2 / frequency
             for i in 1...Int((warmUp + 2 / frequency) * rate) {
                 let t = CGFloat(i) / rate
@@ -167,24 +171,29 @@ import Testing
                 arrow.step(to: mouse, dt: 1 / rate)
                 guard t > warmUp else { continue }
                 let reach = arrow.points.map { hypot($0.x - mouse.x, $0.y - mouse.y) }.max() ?? 0
-                if abs(velocity) > 0.6 * top { shortest = min(shortest, reach) }
+                if abs(velocity) > 0.9 * top { middle = min(middle, reach) }
                 worstOverlap = max(worstOverlap, overlapArea(arrow.points))
                 if velocity * lastVelocity < 0 { turnedAt = t }
                 lastVelocity = velocity
-                // 胴体（先端から頂点の平均）が、動く向きの後ろ 30 度以内に来たら回りきった
-                if let turned = turnedAt {
-                    let cx = arrow.points.map(\.x).reduce(0, +) / CGFloat(arrow.points.count)
-                    let cy = arrow.points.map(\.y).reduce(0, +) / CGFloat(arrow.points.count)
-                    let behind: CGFloat = velocity > 0 ? .pi : 0
-                    if abs(wrapAngle(atan2(cy - mouse.y, cx - mouse.x) - behind)) < .pi / 6 {
-                        slowest = max(slowest, t - turned)
-                        turnedAt = nil
-                    }
+                // 胴体（先端から頂点の平均）が、動く向きの後ろから何度ずれているか
+                let cx = arrow.points.map(\.x).reduce(0, +) / CGFloat(arrow.points.count)
+                let cy = arrow.points.map(\.y).reduce(0, +) / CGFloat(arrow.points.count)
+                let off = abs(wrapAngle(atan2(cy - mouse.y, cx - mouse.x) - (velocity > 0 ? .pi : 0)))
+                if let turned = turnedAt, off < .pi / 6, reach > 2 * rest {
+                    slowest = max(slowest, t - turned)
+                    turnedAt = nil
+                }
+                if abs(velocity) > 0.3 * top, reach > 1.8 * rest, off > .pi / 2 {
+                    wrongWay += 1 / rate
+                    longestWrongWay = max(longestWrongWay, wrongWay)
+                } else {
+                    wrongWay = 0
                 }
             }
             let label = "±\(amplitude)pt \(frequency)回/秒 \(Int(rate))Hz"
-            #expect(shortest > 2 * rest, "\(label): 速く動いている間の長さ \(shortest / rest) 倍")
-            #expect(slowest < 0.12, "\(label): 折り返してから回りきるまで \(slowest) 秒")
+            #expect(slowest < 0.08, "\(label): 折り返してから回りきって伸びるまで \(slowest) 秒")
+            #expect(middle > 2 * rest, "\(label): 真ん中の長さ \(middle / rest) 倍")
+            #expect(longestWrongWay < 0.02, "\(label): 長いまま横や前を向いていた時間 \(longestWrongWay) 秒")
             #expect(worstOverlap < 1, "\(label): \(worstOverlap)")
         }
     }
@@ -243,6 +252,70 @@ import Testing
             let label = "\(rx)x\(ry) \(revolutions)回/秒"
             #expect(steady > 2.5 * rest, "\(label): \(steady)")
             #expect(reversed > 0.95 * steady, "\(label): 逆回しのあと \(reversed)、回し続けたとき \(steady)")
+        }
+    }
+
+    // 速く円を描いていて回る向きを逆にしても、どの動きの強さでも、胴体が元の長さより大きく縮まない
+    // （回し終えた直後に、遅れて回る向きのまっすぐな胴体と道の間で混ざって、先端へ縮んでいた）
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func reversedCirclesDoNotCollapse(rate: CGFloat) {
+        let rest = ArrowShape(scale: 1).length
+        for preset in MotionPreset.allCases {
+            for (radius, revolutions) in [(40, 4), (40, 3), (60, 4), (80, 2.5)] as [(CGFloat, CGFloat)] {
+                let arrow = Jelly(scale: 1, motion: MotionParameters(preset.style))
+                var shortest = CGFloat.infinity
+                let script = MouseScript.circle(radiusX: radius, radiusY: radius, revolutions: revolutions, rate: rate, reverseAt: 1.2)
+                for (i, frame) in script.enumerated() {
+                    arrow.step(to: frame.mouse, dt: frame.dt)
+                    if CGFloat(i) / rate > 0.5 { shortest = min(shortest, reach(arrow, from: frame.mouse)) }
+                }
+                #expect(shortest > 0.9 * rest, "\(preset) r\(radius) \(revolutions)回/秒: \(shortest / rest) 倍")
+            }
+        }
+    }
+
+    // マウスの報告が画面の書き換えより遅い（90Hz のトラックパッドと 120Hz の画面など）と、位置が変わらないフレームが混じる。
+    // 一定の速さで動かしているなら、それで長さが細かく縮んだり伸びたりしない
+    // （抜けたフレームを止まりかけと数えると、0.8 秒の間に長さが合わせて 100px 以上行き来する）
+    @Test func steadyMotionDoesNotFlickerWithSlowerInput() {
+        for (display, input) in [(120, 90), (60, 125), (120, 125), (144, 125)] as [(CGFloat, CGFloat)] {
+            for speed in [300, 600, 1000, 1500, 2500] as [CGFloat] {
+                let arrow = Jelly(scale: 1)
+                arrow.step(to: CGPoint(x: 100, y: 100), dt: 0)
+                var t: CGFloat = 0, first: CGFloat?, last: CGFloat?, variation: CGFloat = 0
+                while t < 1.2 {
+                    t += 1 / display
+                    let reported = (t * input + 1e-6).rounded(.down) / input
+                    let mouse = CGPoint(x: 100 + speed * reported * cos(0.5), y: 100 + speed * reported * sin(0.5))
+                    arrow.step(to: mouse, dt: 1 / display)
+                    guard t > 0.4 else { continue }
+                    let r = reach(arrow, from: mouse)
+                    if let last { variation += abs(r - last) } else { first = r }
+                    last = r
+                }
+                // 行き来した長さの合計から、正味の変化を除いたもの
+                let wiggle = variation - abs((last ?? 0) - (first ?? 0))
+                #expect(wiggle < 70, "画面 \(Int(display))Hz、報告 \(Int(input))Hz、\(Int(speed))pt/秒: \(wiggle) px")
+            }
+        }
+    }
+
+    // 三角波のように端で一瞬で折り返すと、折り返しのフレームで、ごく短い（向きのでたらめな）区間ができることがある。
+    // それでも折り返しの角度を見誤らず、矢じりが折り返しで重ならない
+    @Test(arguments: [60, 120, 240] as [CGFloat])
+    func sharpShakesStayWhole(rate: CGFloat) {
+        for (amplitude, frequency, axis) in [(400, 1.2, 3 * .pi / 4), (300, 1.8, 0), (200, 2.5, .pi / 4), (400, 1.2, 0)] as [(CGFloat, CGFloat, CGFloat)] {
+            let arrow = Jelly(scale: 1)
+            arrow.step(to: CGPoint(x: 500, y: 500), dt: 0)
+            var worstOverlap: CGFloat = 0, t: CGFloat = 0
+            while t < 2.5 {
+                t += 1 / rate
+                let k: CGFloat = 0.985
+                let u = amplitude * asin(k * sin(2 * .pi * frequency * t)) / asin(k) * min(t / 0.2, 1)
+                arrow.step(to: CGPoint(x: 500 + u * cos(axis), y: 500 + u * sin(axis)), dt: 1 / rate)
+                worstOverlap = max(worstOverlap, overlapArea(arrow.points))
+            }
+            #expect(worstOverlap < 1, "±\(amplitude)pt \(frequency)回/秒 向き \(axis): \(worstOverlap)")
         }
     }
 
