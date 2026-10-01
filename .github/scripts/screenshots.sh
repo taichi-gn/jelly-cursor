@@ -18,14 +18,17 @@ note() {
     echo "$1"
     echo "$1" >>"$SUMMARY"
 }
-for tool in window-bounds move-mouse diagnose press-key click ax-frame image-stats; do
+for tool in window-bounds move-mouse diagnose press-key click ax-frame image-stats cursor-watch; do
     swiftc -O ".github/scripts/$tool.swift" -o "$TOOLS/$tool"
 done
 
 # 終わるとき（途中で失敗したときも）に、撮った画像と結果の要点を出す。
 # 成果物を取り出せない環境でも見られるよう、画像は base64 でログにも出す。画面全体は大きいので縮めた JPEG にする。
 # 設定画面の各タブは成果物にだけ入れ、ログには、確かめたい画像だけを出す
+# macOS の bash 3.2 は、変数の読み違いなどで途中で終わったとき、ここの最後のコマンドの結果（成功）で終わってしまうので、
+# 終わったときの結果を覚えておいて、それで終わる
 report() {
+    local status=$?
     for name in screen menu-screen; do
         [ -f "$OUT/$name.png" ] || continue
         sips -s format jpeg -s formatOptions 60 --resampleWidth 800 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
@@ -43,6 +46,7 @@ report() {
     done
     echo "===== まとめ ====="
     cat "$SUMMARY"
+    exit "$status"
 }
 trap report EXIT
 
@@ -362,6 +366,54 @@ fi
 quit
 # 止まっている間に何かが回り続けていないこと（仮想マシンの揺れを見込んで、ゆるく確かめる）
 awk -v v="$idle" 'BEGIN { exit !(v < 10) }' || fail "止まっている間の CPU が多すぎる: ${idle}%"
+
+# 文字の上でカーソルの形が入れ替わり続けないこと（矢印と I 字がパカパカしない）。
+# テキストエディットの文字の上で、止めている間と動かしている間に、画面に出ているカーソルの形の変化を数える。
+# JellyCursor を止めた状態でも数えて比べる（アプリ自身の切り替えと見分けるため）
+for _ in $(seq 60); do echo "JellyCursor のカーソルを文字の上に置いて、形が入れ替わり続けないかを見るための文章です。"; done >"$TOOLS/text.txt"
+open -a TextEdit "$TOOLS/text.txt"
+sleep 3
+if text=$("$TOOLS/window-bounds" TextEdit); then
+    IFS=, read -r tx ty tw th <<<"$text"
+    px=$((tx + tw / 2)); py=$((ty + th / 2))
+    for state in without with; do
+        if [ "$state" = with ]; then
+            write_settings '{}'
+            launch
+        fi
+        "$TOOLS/cursor-watch" 4 "$px" "$py" >"$TOOLS/cursor-still-$state.txt"
+        note "文字の上で止めている間（JellyCursor ${state}）: $(tail -1 "$TOOLS/cursor-still-$state.txt")"
+        "$TOOLS/move-mouse" "$px" "$py" 30 3 &
+        mover=$!
+        "$TOOLS/cursor-watch" 3 >"$TOOLS/cursor-moving-$state.txt"
+        wait "$mover"
+        note "文字の上で動かしている間（JellyCursor ${state}）: $(tail -1 "$TOOLS/cursor-moving-$state.txt")"
+        head -20 "$TOOLS/cursor-still-$state.txt" "$TOOLS/cursor-moving-$state.txt"
+        if [ "$state" = with ]; then
+            # 描いている間は、文字の上で形が入れ替わらず、止めていても本物が一瞬も出ないこと（出るとその一瞬が点滅して見える）
+            grep -q "形の変化 0 回" "$TOOLS/cursor-still-$state.txt" || fail "文字の上で止めている間にカーソルの形が入れ替わった"
+            grep -q "形の変化 0 回" "$TOOLS/cursor-moving-$state.txt" || fail "文字の上で動かしている間にカーソルの形が入れ替わった"
+            grep -q "見える・見えないの変化 0 回" "$TOOLS/cursor-still-$state.txt" || fail "文字の上で止めている間に本物のカーソルが一瞬出た"
+        fi
+        if [ "$state" = with ]; then
+            # 止めている間に描いている形を、少しずつ時間をずらして撮る（矢印と I 字が入れ替わっていれば、画像が変わる）
+            "$TOOLS/move-mouse" "$px" "$py" 0 0.2
+            sleep 1
+            sums=""
+            for shot in 1 2 3 4 5 6 7 8 9 10; do
+                screencapture -x -R"$((px - 16)),$((py - 16)),48,48" "$TOOLS/text-hover-$shot.png"
+                stats=$("$TOOLS/image-stats" "$TOOLS/text-hover-$shot.png")
+                sums="$sums ${stats##*checksum=}"
+            done
+            note "文字の上で止めている間に撮った10枚の違い: $(printf '%s\n' $sums | sort -u | wc -l | tr -d ' ') 種類"
+            cp "$TOOLS/text-hover-1.png" "$OUT/text-hover.png"
+            quit
+        fi
+    done
+else
+    note "テキストエディットの窓が見つからなかったので、文字の上の確認は飛ばした"
+fi
+osascript -e 'tell application "TextEdit" to quit saving no' || true
 
 # ショートカット（⌃⌥⌘J）でオフにすると本物のカーソルが見えて描く窓が消え、もう一度押すと戻ること
 write_settings '{"shortcut": {"keyCode": 38, "modifiers": 11, "keyLabel": "J"}}'

@@ -40,7 +40,9 @@ package struct TypingWatch {
 }
 
 // 他のアプリが本物のカーソルを隠しているかを、マウスが止まっている間だけ間をあけて調べる。
-// 他のアプリが隠すのは動画を放置したときや文字を打っているときで、マウスを動かせば表示に戻る
+// 他のアプリが隠すのは動画を放置したときや文字を打っているときで、マウスを動かせば表示に戻る。
+// 調べるときは本物を一瞬だけ出すので、自前の絵と本物の形が少し違う I 字や指の上では、その一瞬が点滅して見える。
+// そこで、調べてよいとき（canProbe）だけ調べる。I 字の文字入力は TypingWatch で見分けている
 package struct OtherHideWatch {
     private var lastMouse: CGPoint?
     private var stillSince: TimeInterval
@@ -52,10 +54,15 @@ package struct OtherHideWatch {
     }
 
     // lastInput は最後のキー入力かクリックの時刻
-    package mutating func update(mouse: CGPoint, now: TimeInterval, lastInput: @autoclosure () -> TimeInterval, probe: () -> Bool) {
+    package mutating func update(mouse: CGPoint, now: TimeInterval, lastInput: @autoclosure () -> TimeInterval,
+                                 canProbe: Bool = true, probe: () -> Bool) {
         if mouse != lastMouse {
             lastMouse = mouse
             stillSince = now
+            isHidden = false
+            return
+        }
+        guard canProbe else {
             isHidden = false
             return
         }

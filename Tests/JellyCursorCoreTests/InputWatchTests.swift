@@ -69,6 +69,25 @@ import Testing
         #expect(!w.isHidden)
     }
 
+    // 調べてよいとき（矢印のとき）だけ調べる。I 字や指では本物を一瞬出さない（点滅して見えるので）
+    @Test func probesOnlyWhenAllowed() {
+        var w = OtherHideWatch(now: 0)
+        var probes = 0
+        let probe = { () -> Bool in probes += 1; return true }
+        w.update(mouse: mouse, now: 0, lastInput: -10, canProbe: false, probe: probe)
+        for now in stride(from: 0.5, through: 5, by: 0.5) {
+            w.update(mouse: mouse, now: now, lastInput: -10, canProbe: false, probe: probe)
+        }
+        #expect(probes == 0)
+        #expect(!w.isHidden)
+        w.update(mouse: mouse, now: 5.5, lastInput: -10, canProbe: true, probe: probe)
+        #expect(probes == 1)
+        #expect(w.isHidden)
+        // 隠れていると分かったあとで I 字や指になったら、隠れていない扱いに戻して描く
+        w.update(mouse: mouse, now: 6, lastInput: -10, canProbe: false, probe: probe)
+        #expect(!w.isHidden)
+    }
+
     // キーやクリックのあとは、相手が戻し終えるのを少し待ってから、いつもの間隔で確かめ直す
     @Test func rechecksSoonAfterInput() {
         var w = OtherHideWatch(now: 0)
