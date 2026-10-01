@@ -1,5 +1,6 @@
 import AppKit
 import JellyCursorCore
+import Observation
 import SwiftUI
 
 // 設定画面の窓。中身は SwiftUI で作り、窓は AppKit で持つ。
@@ -76,7 +77,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                                 recorder: recorder)
         let controller = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: controller)
-        window.title = "JellyCursor の設定"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -84,6 +84,19 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.setContentSize(controller.view.fittingSize)
         window.center()
         if let view = window.contentView { Self.hideTabFocusRing(in: view) }
+        followTabTitle(of: window)
         return window
+    }
+
+    // 窓のタイトルを今開いているタブの名前にする（設定の窓のタイトルは、表示しているパネルに合わせる。Apple の HIG）
+    private func followTabTitle(of window: NSWindow) {
+        withObservationTracking {
+            window.title = navigation.tab.title
+        } onChange: { [weak self, weak window] in
+            Task { @MainActor in
+                guard let self, let window else { return }
+                self.followTabTitle(of: window)
+            }
+        }
     }
 }

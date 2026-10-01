@@ -31,7 +31,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         state.safeMode = NSEvent.modifierFlags.contains(.shift)
         state.canHideCursor = RealCursor.allowBackgroundControl()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "開発版"
-        AppLog.notice("起動 \(version) セーフモード=\(state.safeMode) 本物を隠せる=\(state.canHideCursor)")
+        AppLog.notice("起動 \(version) セーフモード=\(state.safeMode) カーソルを隠せる=\(state.canHideCursor)")
         engine = CursorEngine(canHideCursor: state.canHideCursor, motion: settings.values.motionParameters,
                               cursorKinds: settings.values.cursorKinds)
         setUpSignalHandlers()
@@ -190,6 +190,7 @@ package final class AppController: NSObject, NSApplicationDelegate {
         let hideOthers = appMenu.addItem(withTitle: "ほかを隠す",
                                          action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "すべてを表示", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "JellyCursor を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let appItem = NSMenuItem()

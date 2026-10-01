@@ -17,10 +17,10 @@ struct ShortcutRecorder: View {
                     recorder.start { combo = $0 }
                 }
             } label: {
-                Text(recorder.isRecording ? "キーを押してください…" : combo?.displayString ?? "記録する")
+                Text(recorder.isRecording ? "キーを押してください…" : combo?.displayString ?? "ショートカットを記録")
                     .frame(minWidth: 140)
             }
-            .help(recorder.isRecording ? "esc でやめる、delete で消す" : "押してからショートカットのキーを押します")
+            .help(recorder.isRecording ? "esc キーで中止、delete キーで削除" : "クリックしてから、使いたいキーの組み合わせを押します")
             if combo != nil && !recorder.isRecording {
                 Button {
                     combo = nil
@@ -28,7 +28,7 @@ struct ShortcutRecorder: View {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
-                .help("ショートカットを消す")
+                .help("ショートカットを削除")
             }
         }
         // ほかのタブへ移ったら記録をやめる

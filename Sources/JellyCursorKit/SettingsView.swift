@@ -6,6 +6,17 @@ import UniformTypeIdentifiers
 
 enum SettingsTab: String, CaseIterable {
     case general, motion, cursors, autoPause, about
+
+    // タブの名前。窓のタイトルにも使う
+    var title: String {
+        switch self {
+        case .general: "一般"
+        case .motion: "動き"
+        case .cursors: "カーソル"
+        case .autoPause: "自動一時停止"
+        case .about: "情報"
+        }
+    }
 }
 
 // 設定画面で今開いているタブ。窓の外（起動時の指定など）からも切り替えられるようにする
@@ -27,19 +38,19 @@ struct SettingsView: View {
     var body: some View {
         TabView(selection: $navigation.tab) {
             GeneralPane(settings: settings, state: state, actions: actions, recorder: recorder, navigation: navigation)
-                .tabItem { Label("一般", systemImage: "gearshape") }
+                .tabItem { Label(SettingsTab.general.title, systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             MotionPane(settings: settings)
-                .tabItem { Label("動き", systemImage: "wand.and.rays") }
+                .tabItem { Label(SettingsTab.motion.title, systemImage: "wand.and.rays") }
                 .tag(SettingsTab.motion)
             CursorsPane(settings: settings)
-                .tabItem { Label("カーソル", systemImage: "cursorarrow") }
+                .tabItem { Label(SettingsTab.cursors.title, systemImage: "cursorarrow") }
                 .tag(SettingsTab.cursors)
             AutoPausePane(settings: settings)
-                .tabItem { Label("自動で止める", systemImage: "pause.circle") }
+                .tabItem { Label(SettingsTab.autoPause.title, systemImage: "pause.circle") }
                 .tag(SettingsTab.autoPause)
             AboutPane(settings: settings, state: state)
-                .tabItem { Label("情報", systemImage: "info.circle") }
+                .tabItem { Label(SettingsTab.about.title, systemImage: "info.circle") }
                 .tag(SettingsTab.about)
         }
         .frame(width: 560, height: 600)
@@ -78,11 +89,11 @@ private struct GeneralPane: View {
                     set: { loginItem.setEnabled($0) }))
                     .disabled(!loginItem.isInstalled && !loginItem.isEnabled)
                 if !loginItem.isInstalled {
-                    Note("アプリケーションフォルダに置くと使えます（make install で ~/Applications に入ります）")
+                    Note("アプリケーションフォルダに入れると使えます（make install で ~/Applications に入ります）。")
                 }
                 if loginItem.needsApproval {
                     HStack {
-                        Note("システム設定の「ログイン項目」で許可してください")
+                        Note("システム設定で、JellyCursor のログイン時の起動を許可してください。")
                         Spacer()
                         Button("システム設定を開く") { loginItem.openSystemSettings() }
                     }
@@ -94,7 +105,7 @@ private struct GeneralPane: View {
 
             Section("メニューバー") {
                 Toggle("メニューバーにアイコンを表示", isOn: $settings.values.showsMenuBarIcon)
-                Note("隠しても、JellyCursor をもう一度開くとこの画面が開きます")
+                Note("アイコンを隠したときは、JellyCursor をもう一度開くと、この設定画面が表示されます。")
             }
 
             Section("ショートカット") {
@@ -102,9 +113,9 @@ private struct GeneralPane: View {
                     ShortcutRecorder(combo: $settings.values.shortcut, recorder: recorder)
                 }
                 if state.shortcutFailed {
-                    Note("このショートカットはほかのアプリが使っているため登録できませんでした", color: .red)
+                    Note("このショートカットは、ほかのアプリが使っているため登録できませんでした。", color: .red)
                 } else {
-                    Note("どのアプリを使っているときでも効きます。⌘・⌃・⌥のうち2つ以上と組み合わせてください（ファンクションキーは単独でも使えます）")
+                    Note("どのアプリを使っているときにも働きます。Command・Control・Option のうち2つ以上を組み合わせてください（ファンクションキーは単独でも登録できます）。")
                 }
             }
 
@@ -138,7 +149,7 @@ private struct MotionPane: View {
             Section {
                 // カスタムはいつも出して、切り替えの位置がずれないようにする。スライダーでプリセットと違う値にすると
                 // カスタムになり、その値を覚えておく。まだカスタムにしたことがなければ選べない
-                Picker("プリセット", selection: Binding(
+                Picker("動きの強さ", selection: Binding(
                     get: { settings.values.preset },
                     set: { preset in
                         if let preset {
@@ -160,21 +171,21 @@ private struct MotionPane: View {
                 .id(presetRedraw)
 
                 StrengthSlider(title: "伸び", value: $settings.values.motion.stretch,
-                               low: "なし", high: "大きく",
-                               note: "速く動かしたときに伸びる・太る・傾く大きさ")
+                               low: "なし", high: "大",
+                               note: "速く動かしたときの、伸び・太さ・傾きの大きさ")
                 StrengthSlider(title: "弾み", value: $settings.values.motion.wobble,
-                               low: "なし", high: "大きく",
-                               note: "止めたときや向きを変えたときの揺れ")
+                               low: "なし", high: "大",
+                               note: "止めたときや向きを変えたときの、揺れの大きさ")
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("クリックで弾む", isOn: $settings.values.clickBounce)
-                    Note("押すとクリック位置へ向けて少しつぶれ、離すと弾んで戻ります。つぶれる深さは「伸び」、戻り方は「弾み」に合わせます")
+                    Note("ボタンを押すとクリックした位置へ向けて少しつぶれ、離すと弾んで戻ります。つぶれる深さは「伸び」、戻るときの揺れは「弾み」に合わせます。")
                 }
             }
 
             Section("プレビュー") {
                 MotionPreview(motion: settings.values.motionParameters)
                     .frame(height: 170)
-                Note("標準は、これまでの JellyCursor と同じ動きです")
+                Note("上は矢印、下は文字の上の I 字です。今の設定の動きで表示します。")
             }
         }
         .formStyle(.grouped)
@@ -215,14 +226,14 @@ private struct CursorsPane: View {
     var body: some View {
         Form {
             Section {
-                CursorKindToggle(isOn: $settings.values.cursorKinds.arrow, cursor: .arrow, title: "矢印",
-                                 note: "進行方向を向いて伸び、止めると1回揺れて左上向きに戻ります")
-                CursorKindToggle(isOn: $settings.values.cursorKinds.iBeam, cursor: .iBeam, title: "文字の上の I 字",
-                                 note: "横に振ると太く、縦に振ると伸び、斜めに振るとその向きに傾きます")
-                CursorKindToggle(isOn: $settings.values.cursorKinds.pointingHand, cursor: .pointingHand,
-                                 title: "リンクの上の指", note: "進行方向を指差して伸び、止めると上向きに戻ります")
+                CursorKindToggle(isOn: $settings.values.cursorKinds.arrow, kind: .arrow, title: "矢印",
+                                 note: "進む向きを指して伸び、止めると揺れながら左上向きに戻ります。")
+                CursorKindToggle(isOn: $settings.values.cursorKinds.iBeam, kind: .iBeam, title: "文字の上の I 字",
+                                 note: "横に動かすと太く、縦に動かすと長くなり、斜めに動かすとその向きに傾きます。")
+                CursorKindToggle(isOn: $settings.values.cursorKinds.pointingHand, kind: .pointingHand,
+                                 title: "リンクの上の指", note: "進む向きを指差して伸び、止めると上向きに戻ります。")
             } footer: {
-                Note("オフにした種類と、リサイズなどそれ以外のカーソルは、macOS の本物のカーソルのまま表示します")
+                Note("オフにした種類と、それ以外のカーソル（ウインドウの大きさを変えるときの矢印など）は、macOS のカーソルのまま表示します。")
             }
         }
         .formStyle(.grouped)
@@ -231,14 +242,14 @@ private struct CursorsPane: View {
 
 private struct CursorKindToggle: View {
     @Binding var isOn: Bool
-    let cursor: NSCursor
+    let kind: CursorKind
     let title: String
     let note: String
 
     var body: some View {
         Toggle(isOn: $isOn) {
             HStack(spacing: 10) {
-                Image(nsImage: cursor.image)
+                Image(nsImage: CursorThumbnail.image(for: kind))
                     .frame(width: 28, height: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -260,14 +271,14 @@ private struct AutoPausePane: View {
             Section {
                 Toggle("「視差効果を減らす」がオンのとき", isOn: $settings.values.pauseWhenReduceMotion)
                 Toggle("低電力モードのとき", isOn: $settings.values.pauseOnLowPower)
-                Toggle("全画面のアプリを使っているとき", isOn: $settings.values.pauseInFullScreen)
+                Toggle("フルスクリーンのアプリを使っているとき", isOn: $settings.values.pauseInFullScreen)
             } header: {
-                Text("次のときは止めて、本物のカーソルに戻します")
+                Text("次のときは一時停止して、macOS のカーソルに戻します")
             } footer: {
-                Note("画面のロック中、ほかのユーザーに切り替えている間、スクリーンセーバーとスリープの間は、いつも止めます")
+                Note("画面のロック中、ほかのユーザに切り替えている間、スクリーンセーバとスリープの間は、いつも一時停止します。")
             }
 
-            Section("このアプリを使っている間は止める") {
+            Section("次のアプリを使っている間は一時停止") {
                 if settings.values.excludedApps.isEmpty {
                     Text("なし").foregroundStyle(.secondary)
                 }
@@ -406,21 +417,21 @@ private struct AboutPane: View {
 
             Section {
                 LabeledContent("状態", value: status)
-                LabeledContent("本物のカーソルの非表示",
-                               value: state.canHideCursor ? "使用可能" : "使用不可（本物のカーソルに重ねて表示）")
+                LabeledContent("macOS のカーソルの非表示",
+                               value: state.canHideCursor ? "使用可能" : "使用不可（macOS のカーソルに重ねて表示）")
             }
 
             Section("困ったとき") {
-                Note("カーソルが見えなくなったら、ショートカットかメニューの「有効」でオフにすると戻ります。"
-                    + "ターミナルで killall JellyCursor を実行しても、本物のカーソルに戻って終わります")
-                Note("Shift キーを押しながら JellyCursor を開くと、止めた状態（セーフモード）で起動します")
+                Note("カーソルが見えなくなったときは、ショートカットか、メニューの「有効」でオフにすると戻ります。"
+                    + "ターミナルで killall JellyCursor を実行すると、macOS のカーソルに戻してから終了します。")
+                Note("Shift キーを押しながら JellyCursor を開くと、オフの状態（セーフモード）で起動します。")
                 HStack {
                     Button("診断情報をコピー") { copyDiagnostics() }
                     if copied {
                         Text("コピーしました").font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Note("おかしな動きを伝えるときに貼り付けてください。この起動のあいだの最近の記録（状態の変化など）も入ります")
+                Note("不具合を報告するときに貼り付けてください。今回の起動からの記録（状態の変化など）も含まれます。")
             }
         }
         .formStyle(.grouped)

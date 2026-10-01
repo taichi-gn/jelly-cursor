@@ -42,12 +42,12 @@ package enum PauseReason: Equatable, Sendable {
     package var message: String {
         switch self {
         case .noCursorKinds: "カーソルの種類がすべてオフ"
-        case .sessionInactive: "ほかのユーザーに切り替え中"
+        case .sessionInactive: "ほかのユーザに切り替え中"
         case .screenLocked: "画面のロック中"
-        case .screenSaver: "スクリーンセーバーの表示中"
+        case .screenSaver: "スクリーンセーバの表示中"
         case .asleep: "スリープ中"
         case .excludedApp(let name): "「\(name)」を使用中"
-        case .fullScreen: "全画面のアプリを使用中"
+        case .fullScreen: "フルスクリーンのアプリを使用中"
         case .reduceMotion: "「視差効果を減らす」がオン"
         case .lowPower: "低電力モード"
         }
@@ -96,7 +96,7 @@ package enum Activity: Equatable, Sendable {
     package var statusLine: String? {
         switch self {
         case .off, .running: nil
-        case .safeMode: "セーフモード（「有効」をオンにすると動きます）"
+        case .safeMode: "セーフモード（有効にすると動きます）"
         case .paused(let reason): "一時停止中（\(reason.message)）"
         }
     }
@@ -156,7 +156,7 @@ package enum StatusIcon: Hashable, CaseIterable, Sendable {
         case .running: "JellyCursor: オン"
         case .off: "JellyCursor: オフ"
         case .paused: "JellyCursor: 一時停止中"
-        case .warning: "JellyCursor: 本物のカーソルを隠せません"
+        case .warning: "JellyCursor: macOS のカーソルを隠せません"
         }
     }
 }
