@@ -19,6 +19,10 @@ package enum Tuning {
         static let keepTime: CGFloat = 0.5
         static let maxStretch: CGFloat = 60
         static let lengthSmoothing: CGFloat = 0.03
+        // 今の速さのならしの時間（秒）。伸びは、今の速さでその秒数（duration）に進む道のりまでに抑える
+        static let speedSmoothing: CGFloat = 0.008
+        // 位置が変わらないフレームが、この秒数より短く続いただけなら、今の速さに数えない（マウスの報告が画面の書き換えより遅いときの抜け）
+        static let stillHold: CGFloat = 0.02
         // 伸びたぶん細くする度合い。0.5 なら長さ2倍で幅が約0.7倍、0 なら幅は変わらない
         static let thinning: CGFloat = 0.5
         // 道の向きを測るときに前後何pxの区間を使うか。短いと手ぶれで向きがばたつく
@@ -76,17 +80,19 @@ package enum Tuning {
         // 先端近くの道の向きから、この角度より大きく曲がっていたら折り返しとみなす。
         // 90度の曲がり角（上へ動いてから横へ）は、これまでどおり道に沿って曲げる
         static let angle: CGFloat = 100 * .pi / 180
-        // この角度より大きく曲がった（ほぼまっすぐ戻った）ときは、1フレームで矢じりより後ろまで戻っても回す
-        static let reversalAngle: CGFloat = 150 * .pi / 180
         // 先端近くの道の向きを測る長さ（pt）。短いと手ぶれで折り返しと見てしまう
         static let reference: CGFloat = 3
-        // 回すばね。行き過ぎず、短い矢印なら約0.06秒でほぼ回りきる
-        static let omega: CGFloat = 55
+        // 回すばね。行き過ぎず、速く振ったときは折り返してから約0.03〜0.05秒で向きがそろう
+        static let omega: CGFloat = 120
         // 回している間に胴体の端が動く速さの上限（pt/秒）。長いうちはゆっくり、縮むにつれて速く回る。
-        // 伸びを残したまま回しても、速く振ったときに約0.1秒で回りきり、1フレームで端が飛びすぎない値
+        // 1フレームで端が飛びすぎない値
         static let maxTailSpeed: CGFloat = 2000
-        // 折り返したときに残す伸びの割合。回している間は保ち、回し終えたらこの秒数で減らす
-        static let keepStretch: CGFloat = 0.75
+        // 先端近くの道の向きと、先端から折り返しへの向きの cos がこれより大きければ（約37度以内）、折り返しから先端までの道は
+        // ほぼまっすぐとみなす
+        static let straightCosine: CGFloat = 0.8
+        // 回し始めて縮めるときの、長さのならしの時間（秒）。ふだん（Trail.lengthSmoothing）より早く縮める
+        static let shrinkSmoothing: CGFloat = 0.02
+        // 回し終えたときの伸びを減らす時間（秒）
         static let keepDecay: CGFloat = 0.1
         // ゆっくり折り返したときは、胴体の端が動く速さを、先端の速さのこの倍までにする（ただし minTailSpeed pt/秒 までは許す）
         static let tailSpeedRatio: CGFloat = 4

@@ -7,7 +7,7 @@ import Testing
 
 // 標準の動きが、記録と同じであることを確かめる（意図しない変化に気づくため）。
 // golden-motion.json は、GoldenScenario を動かし、4フレームごとに記録したもの。最初はパッケージに分ける前（main の efbc96a）の
-// コードで記録し、矢印が胴体と逆向きへ動き出したときに胴体をつぶさず先に向きを回すようにしたときに、矢印を記録し直した。
+// コードで記録し、そのあとは動きを意図して変えるたびに（直近は、矢印を折り返しで縮めてからすばやく回すようにしたとき）記録し直した。
 // 動きの標準を意図して変えたときは、RECORD_GOLDEN=1 swift test --filter GoldenMotionTests で記録し直す
 @Suite struct GoldenMotionTests {
     private static let isRecording = ProcessInfo.processInfo.environment["RECORD_GOLDEN"] != nil
