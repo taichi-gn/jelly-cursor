@@ -44,6 +44,7 @@ while case let t = Date().timeIntervalSince(start), t < seconds {
         if lastVisible != nil { visibleChanges += 1 }
         lastVisible = visible
     }
-    usleep(2_000)
+    // 本物が一瞬だけ出るのも捉えられるよう、細かく見る
+    usleep(200)
 }
 print("形の変化 \(kindChanges) 回、通し番号の変化 \(seedChanges) 回、見える・見えないの変化 \(visibleChanges) 回")

@@ -132,7 +132,9 @@ final class CursorEngine {
         if hideReal { RealCursor.hide() } else { RealCursor.show() }
         RealCursor.rehideIfShown()
         let now = ProcessInfo.processInfo.systemUptime
-        otherHide.update(mouse: mouse, now: now, lastInput: now - Self.secondsSinceKeyOrClick()) { RealCursor.isHiddenByOthers() }
+        // 本物を一瞬出して確かめるのは矢印のときだけ（I 字や指では、その一瞬が点滅して見える）
+        otherHide.update(mouse: mouse, now: now, lastInput: now - Self.secondsSinceKeyOrClick(),
+                         canProbe: cursorShape.kind == .arrow) { RealCursor.isHiddenByOthers() }
         if !drawn || RealCursor.isOverpowered || covered || otherHide.isHidden {
             overlay.figure = nil
             return

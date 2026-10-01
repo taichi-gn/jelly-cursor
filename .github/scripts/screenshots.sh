@@ -38,17 +38,7 @@ report() {
         sips -s format jpeg -s formatOptions 70 "$OUT/$name.png" --out "$TOOLS/$name.jpg" >/dev/null || true
     done
     # ログは長いと先頭から切れて取り出せないので、大きい画像を先に、確かめたい画像をあとに出す
-    # 調べもの: 文字の上の確認だけを見るため、ほかの画像は出さない
-    for image in "$OUT"/text-hover.png; do
-        [ -f "$image" ] || continue
-        echo "BEGIN-IMAGE $(basename "$image")"
-        base64 -b 100 -i "$image"
-        echo "END-IMAGE"
-    done
-    echo "===== まとめ ====="
-    cat "$SUMMARY"
-    exit "$status"
-    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/focus-motion.jpg "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$OUT"/reset-dialog.png "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png "$OUT"/text-hover.png; do
+    for image in "$TOOLS/screen.jpg" "$TOOLS/menu-screen.jpg" "$TOOLS"/focus-motion.jpg "$OUT"/moving.png "$OUT"/stopping.png "$OUT"/click-rest.png "$OUT"/click-pressed.png "$OUT"/click-released.png "$TOOLS"/preview-1.png "$OUT"/settings-motion.png "$OUT"/settings-motion-custom.png "$OUT"/reset-dialog.png "$OUT"/menu.png "$OUT"/menu-paused.png "$OUT"/status-running.png "$OUT"/status-paused.png "$OUT"/status-off.png; do
         [ -f "$image" ] || continue
         echo "BEGIN-IMAGE $(basename "$image")"
         base64 -b 100 -i "$image"
@@ -391,7 +381,7 @@ if text=$("$TOOLS/window-bounds" TextEdit); then
             write_settings '{}'
             launch
         fi
-        "$TOOLS/cursor-watch" 3 "$px" "$py" >"$TOOLS/cursor-still-$state.txt"
+        "$TOOLS/cursor-watch" 4 "$px" "$py" >"$TOOLS/cursor-still-$state.txt"
         note "文字の上で止めている間（JellyCursor ${state}）: $(tail -1 "$TOOLS/cursor-still-$state.txt")"
         "$TOOLS/move-mouse" "$px" "$py" 30 3 &
         mover=$!
@@ -399,6 +389,12 @@ if text=$("$TOOLS/window-bounds" TextEdit); then
         wait "$mover"
         note "文字の上で動かしている間（JellyCursor ${state}）: $(tail -1 "$TOOLS/cursor-moving-$state.txt")"
         head -20 "$TOOLS/cursor-still-$state.txt" "$TOOLS/cursor-moving-$state.txt"
+        if [ "$state" = with ]; then
+            # 描いている間は、文字の上で形が入れ替わらず、止めていても本物が一瞬も出ないこと（出るとその一瞬が点滅して見える）
+            grep -q "形の変化 0 回" "$TOOLS/cursor-still-$state.txt" || fail "文字の上で止めている間にカーソルの形が入れ替わった"
+            grep -q "形の変化 0 回" "$TOOLS/cursor-moving-$state.txt" || fail "文字の上で動かしている間にカーソルの形が入れ替わった"
+            grep -q "見える・見えないの変化 0 回" "$TOOLS/cursor-still-$state.txt" || fail "文字の上で止めている間に本物のカーソルが一瞬出た"
+        fi
         if [ "$state" = with ]; then
             # 止めている間に描いている形を、少しずつ時間をずらして撮る（矢印と I 字が入れ替わっていれば、画像が変わる）
             "$TOOLS/move-mouse" "$px" "$py" 0 0.2
