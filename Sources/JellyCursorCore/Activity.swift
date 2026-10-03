@@ -10,7 +10,7 @@ package struct AppIdentity: Equatable, Sendable {
     }
 }
 
-// 自動で止めるかを決めるための、Mac の今の状態
+// 自動で一時停止するかを決めるための、Mac の今の状態
 package struct SystemConditions: Equatable, Sendable {
     // ユーザーの切り替えで、この画面が裏に回っていない
     package var sessionActive = true

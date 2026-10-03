@@ -218,7 +218,7 @@ package final class Jelly: CursorFigure {
                     p.aimed = false
                 }
                 // 回す先が決まったフレームでは、決まったあとの時間だけ回す。まるごと回すと、画面の書き換えが遅いほど
-                // 早く回り始め、伸びを残した長い胴体では、書き換えの速さで尾の位置が大きく変わる
+                // 早く回り始め、長い胴体では、書き換えの速さで尾の位置が大きく変わる
                 if !p.aimed {
                     let gained = distance - hypot(end.x - previous.x, end.y - previous.y)
                     if gained > 0 { turning = dt * min(max((distance - Tuning.Fold.minTurnTravel) / gained, 0), 1) }
