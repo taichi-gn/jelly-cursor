@@ -138,7 +138,7 @@ private struct GeneralPane: View {
     }
 }
 
-// 動き: プリセット・強さ・プレビュー
+// 動き: 動きの強さ（プリセット）・伸びと弾み・プレビュー
 private struct MotionPane: View {
     @Bindable var settings: AppSettings
     // 選べないカスタムが押されたときに、切り替えを作り直して今の選択に戻す
@@ -260,7 +260,7 @@ private struct CursorKindToggle: View {
     }
 }
 
-// 自動で止める: 視差効果・低電力・全画面・除外するアプリ
+// 自動一時停止: 視差効果・低電力・フルスクリーン・除外するアプリ
 private struct AutoPausePane: View {
     @Bindable var settings: AppSettings
     // 起動中のアプリ。アプリが起動・終了したら読み直す

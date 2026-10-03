@@ -33,7 +33,13 @@ func run(_ figure: CursorFigure, start: CGPoint, segments: [Segment]) -> (frames
 func hold(_ p: CGPoint, _ seconds: Double) -> Segment { Segment(duration: seconds) { _ in p } }
 func press(_ p: CGPoint, _ seconds: Double) -> Segment { Segment(duration: seconds, pressed: true) { _ in p } }
 
+// 左右に振る（左端から出て、往復して左端に戻る）
+func shake(from p: CGPoint, width: Double, cycles: Double, seconds: Double) -> Segment {
+    Segment(duration: seconds) { u in CGPoint(x: p.x + width * (1 - cos(2 * .pi * cycles * u)) / 2, y: p.y) }
+}
+
 // 矢印: 右上へ弧を描いて速く動かし、止める（揺れて戻る）→ クリック → 左下へ戻して止める → クリック
+// → 左右に振る（端で縮んで向きを変え、真ん中で伸びる）→ 止める
 let a0 = CGPoint(x: 70, y: 70), a1 = CGPoint(x: 290, y: 190)
 let arrowSegments = [
     hold(a0, 0.5),
@@ -41,8 +47,9 @@ let arrowSegments = [
     hold(a1, 0.55), press(a1, 0.15), hold(a1, 0.4),
     Segment(duration: 0.55) { u in let e = smooth(u); return CGPoint(x: a1.x + (a0.x - a1.x) * e, y: a1.y + (a0.y - a1.y) * e - 45 * sin(.pi * u)) },
     hold(a0, 0.6), press(a0, 0.15), hold(a0, 0.55),
+    shake(from: a0, width: 220, cycles: 2, seconds: 0.9), hold(a0, 0.7),
 ]
-// I 字: 横に速く（太る）→ 止める（弾む）→ 斜めに（傾く）→ 縦に（伸びる）→ 止める → クリック
+// I 字: 横に速く（太る）→ 止める（弾む）→ 斜めに（傾く）→ 縦に（伸びる）→ 止める → クリック → 左右に振る → 止める
 let b0 = CGPoint(x: 70, y: 130), b1 = CGPoint(x: 290, y: 130), b2 = CGPoint(x: 180, y: 50), b3 = CGPoint(x: 180, y: 200)
 let beamSegments = [
     hold(b0, 0.5),
@@ -53,6 +60,7 @@ let beamSegments = [
     Segment(duration: 0.35) { u in let e = smooth(u); return CGPoint(x: b2.x, y: b2.y + (b3.y - b2.y) * e) },
     Segment(duration: 0.55) { u in let e = smooth(u); return CGPoint(x: b3.x + (b0.x - b3.x) * e, y: b3.y + (b0.y - b3.y) * e) },
     hold(b0, 0.15), press(b0, 0.15), hold(b0, 0.4),
+    shake(from: b0, width: 220, cycles: 2, seconds: 0.9), hold(b0, 0.7),
 ]
 let scale: CGFloat = 2
 let arrow = run(Jelly(scale: scale), start: a0, segments: arrowSegments)
